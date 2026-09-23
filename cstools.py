@@ -654,13 +654,15 @@ def cmd_list(args):
 def extract_score_from_output(pattern, output):
     """Return the first capture group from output, or None.
 
-    Call sites pass (regex_pattern, text). Invalid patterns or empty
+    Call sites pass (regex_pattern, text). ANSI color codes are stripped
+    first so patterns match the plain text. Invalid patterns or empty
     text must never raise — scan continues without a score.
     """
     if not pattern or not output:
         return None
+    plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output)
     try:
-        match = re.search(pattern, output, re.IGNORECASE)
+        match = re.search(pattern, plain, re.IGNORECASE)
     except re.error:
         return None
     if match and match.groups():
@@ -692,14 +694,20 @@ def cmd_scan(args):
         [sys.executable, SEO] + seo_args,
         capture_output=True, text=True
     )
+    # SEO prints "Final Score: D201/563" (score is not /100) and grade letter
+    # on OVERALL / Grade lines. Prefer those over per-check "Score: 5/8".
     seo_output = seo_result.stdout
-    seo_score = extract_score_from_output(r'Score:\s*\w?(\d+/\d+)', seo_output)
+    seo_score = extract_score_from_output(r'Final Score:\s*[A-F]?(\d+/\d+)', seo_output)
     if not seo_score:
-        seo_score = extract_score_from_output(r'(\d+)/(\d+)\s*\(?\d+%?\)?', seo_output)
+        seo_score = extract_score_from_output(r'OVERALL\s+[█░]+\s*(\d+)%', seo_output)
+    if not seo_score:
+        seo_score = extract_score_from_output(r'Score:\s*\w?(\d+/\d+)', seo_output)
+    seo_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', seo_output)
     results["seo"] = {
         "output": seo_output,
         "returncode": seo_result.returncode,
         "score": seo_score,
+        "grade": seo_grade,
     }
 
     print(f"\n{C['brand']}[2/17] {C['gold']}Running Security Analysis...{C['reset']}")
@@ -733,7 +741,8 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     perf_output = perf_result.stdout
-    perf_score = extract_score_from_output(r'Score:\s*(\d+)/100', perf_output)
+    # PerfAnalyzer prints "Score: ███ 72/100" — bar chart sits between label and number.
+    perf_score = extract_score_from_output(r'Score:\s*[^\d]*(\d+)/100', perf_output)
     perf_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', perf_output)
     results["perf"] = {
         "output": perf_output,
@@ -753,7 +762,9 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     uptime_output = uptime_result.stdout
-    uptime_score = extract_score_from_output(r'Score:\s*(\d+)/100', uptime_output)
+    uptime_score = extract_score_from_output(r'Avg Score:\s*(\d+)/100', uptime_output)
+    if not uptime_score:
+        uptime_score = extract_score_from_output(r'Score:\s*(\d+)/100', uptime_output)
     uptime_verdict = extract_score_from_output(r'Verdict:\s*(\w+)', uptime_output)
     results["uptime"] = {
         "output": uptime_output,
@@ -773,8 +784,10 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     mobile_output = mobile_result.stdout
-    mobile_score = extract_score_from_output(r'Score:\s*(\d+)/100', mobile_output)
-    mobile_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', mobile_output)
+    mobile_score = extract_score_from_output(r'Mobile Readiness Score:\s*([\d.]+)%', mobile_output)
+    if not mobile_score:
+        mobile_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', mobile_output)
+    mobile_grade = extract_score_from_output(r'Mobile Readiness Score:.*?Grade:\s*([A-F][+-]?)', mobile_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', mobile_output)
     mobile_verdict = extract_score_from_output(r'Mobile.Friendly:\s*(\w+)', mobile_output)
     results["mobile"] = {
         "output": mobile_output,
@@ -795,8 +808,13 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     content_output = content_result.stdout
-    content_score = extract_score_from_output(r'Score:\s*(\d+)/100', content_output)
-    content_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', content_output)
+    # Prefer dashboard overall percent (score already /100); avoid subscore "Score: 0/100" matches.
+    content_score = extract_score_from_output(r'Overall\s+\[[^\]]*\]\s+[\d.]+/\d+\s+\(([\d.]+)%\)', content_output)
+    if not content_score:
+        content_score = extract_score_from_output(r'Overall\s+\[[^\]]*\]\s+([\d.]+)/\d+', content_output)
+    if not content_score:
+        content_score = extract_score_from_output(r'TOTAL\s+█+\s*([\d.]+)/\d+', content_output)
+    content_grade = extract_score_from_output(r'\[Grade:\s*([A-F][+-]?)\]', content_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', content_output)
     results["content"] = {
         "output": content_output,
         "returncode": content_result.returncode,
@@ -815,7 +833,11 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     network_output = network_result.stdout
-    network_score = extract_score_from_output(r'Score:\s*(\d+)/100', network_output)
+    network_score = extract_score_from_output(r'Network Score:\s*(\d+)/100', network_output)
+    if not network_score:
+        network_score = extract_score_from_output(r'Composite Score:\s*([\d.]+)/100', network_output)
+    if not network_score:
+        network_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', network_output)
     network_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', network_output)
     results["network"] = {
         "output": network_output,
@@ -835,7 +857,11 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     access_output = access_result.stdout
-    access_score = extract_score_from_output(r'Score:\s*(\d+)/100', access_output)
+    access_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', access_output)
+    if not access_score:
+        access_score = extract_score_from_output(r'Weighted Score:\s*([\d.]+)', access_output)
+    if not access_score:
+        access_score = extract_score_from_output(r'Raw Score:\s*([\d.]+)', access_output)
     access_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', access_output)
     wcag_level = extract_score_from_output(r'WCAG\s+Level:\s*(\w+)', access_output)
     results["access"] = {
@@ -857,8 +883,10 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     image_output = image_result.stdout
-    image_score = extract_score_from_output(r'Score:\s*(\d+)/100', image_output)
-    image_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', image_output)
+    image_score = extract_score_from_output(r'TOTAL SCORE:\s*([\d.]+)\s*/\s*100', image_output)
+    if not image_score:
+        image_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', image_output)
+    image_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', image_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', image_output)
     results["image"] = {
         "output": image_output,
         "returncode": image_result.returncode,
@@ -877,8 +905,10 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     api_output = api_result.stdout
-    api_score = extract_score_from_output(r'Score:\s*(\d+)/100', api_output)
-    api_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', api_output)
+    api_score = extract_score_from_output(r'TOTAL:\s*([\d.]+)\s*/\s*100', api_output)
+    if not api_score:
+        api_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', api_output)
+    api_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', api_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', api_output)
     results["api"] = {
         "output": api_output,
         "returncode": api_result.returncode,
@@ -897,8 +927,13 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     video_output = video_result.stdout
-    video_score = extract_score_from_output(r'Score:\s*(\d+)/100', video_output)
-    video_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', video_output)
+    # TOTAL SCORE is out of 163; use overall percent for a /100-compatible score.
+    video_score = extract_score_from_output(r'Overall\s+(\d+)%', video_output)
+    if not video_score:
+        video_score = extract_score_from_output(r'TOTAL SCORE\s+([\d.]+)\s*/\s*163', video_output)
+    if not video_score:
+        video_score = extract_score_from_output(r'Score:\s*([\d.]+)/\d+', video_output)
+    video_grade = extract_score_from_output(r'GRADE\s*([A-F][+-]?)', video_output) or extract_score_from_output(r'grade\s+([A-F][+-]?)', video_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', video_output)
     results["video"] = {
         "output": video_output,
         "returncode": video_result.returncode,
@@ -917,8 +952,10 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     schema_output = schema_result.stdout
-    schema_score = extract_score_from_output(r'Score:\s*(\d+)/100', schema_output)
-    schema_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', schema_output)
+    schema_score = extract_score_from_output(r'TOTAL\s+([\d.]+)\s+\d+\s+[\d.]+%', schema_output)
+    if not schema_score:
+        schema_score = extract_score_from_output(r'Score:\s*([\d.]+)/\d+', schema_output)
+    schema_grade = extract_score_from_output(r'TOTAL\s+[\d.]+\s+\d+\s+[\d.]+%\s+Grade:\s*([A-F][+-]?)', schema_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', schema_output)
     results["schema"] = {
         "output": schema_output,
         "returncode": schema_result.returncode,
@@ -937,8 +974,12 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     email_output = email_result.stdout
-    email_score = extract_score_from_output(r'Score:\s*(\d+)/100', email_output)
-    email_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', email_output)
+    email_score = extract_score_from_output(r'DELIVERABILITY SCORE\s*:\s*([\d.]+)\s*/\s*100', email_output)
+    if not email_score:
+        email_score = extract_score_from_output(r'TOTAL SCORE:\s*([\d.]+)\s*/\s*100', email_output)
+    if not email_score:
+        email_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', email_output)
+    email_grade = extract_score_from_output(r'GRADE\s*:\s*([A-F][+-]?)', email_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', email_output)
     results["email"] = {
         "output": email_output,
         "returncode": email_result.returncode,
@@ -957,7 +998,11 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     sitemap_output = sitemap_result.stdout
-    sitemap_score = extract_score_from_output(r'Score:\s*(\d+)/100', sitemap_output)
+    sitemap_score = extract_score_from_output(r'TOTAL\s+.*?([\d.]+)/100', sitemap_output)
+    if not sitemap_score:
+        sitemap_score = extract_score_from_output(r'SCORE:\s*([\d.]+)\s*/\s*100', sitemap_output)
+    if not sitemap_score:
+        sitemap_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', sitemap_output)
     sitemap_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', sitemap_output)
     results["sitemap"] = {
         "output": sitemap_output,
@@ -977,8 +1022,8 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     html_output = html_result.stdout
-    html_score = extract_score_from_output(r'TOTAL\s+█+\s*(\d+)/100', html_output) or extract_score_from_output(r'(\d+)/100', html_output)
-    html_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', html_output)
+    html_score = extract_score_from_output(r'TOTAL\s+.*?([\d.]+)/100', html_output) or extract_score_from_output(r'Score:\s*([\d.]+)/100', html_output)
+    html_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', html_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', html_output)
     results["html"] = {
         "output": html_output,
         "returncode": html_result.returncode,
@@ -997,8 +1042,10 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     cdn_output = cdn_result.stdout
-    cdn_score = extract_score_from_output(r'TOTAL:\s*(\d+(?:\.\d+)?)/100', cdn_output) or extract_score_from_output(r'(\d+)/100', cdn_output)
-    cdn_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', cdn_output)
+    cdn_score = extract_score_from_output(r'TOTAL:\s*([\d.]+)\s*/\s*100', cdn_output)
+    if not cdn_score:
+        cdn_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', cdn_output)
+    cdn_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', cdn_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', cdn_output)
     results["cdn"] = {
         "output": cdn_output,
         "returncode": cdn_result.returncode,
@@ -1017,7 +1064,9 @@ def cmd_scan(args):
         capture_output=True, text=True
     )
     cookies_output = cookies_result.stdout
-    cookies_score = extract_score_from_output(r'Total Score:\s*(\d+)/100', cookies_output) or extract_score_from_output(r'(\d+)/100', cookies_output)
+    cookies_score = extract_score_from_output(r'Total Score:\s*([\d.]+)/100', cookies_output)
+    if not cookies_score:
+        cookies_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', cookies_output)
     cookies_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', cookies_output)
     results["cookies"] = {
         "output": cookies_output,
@@ -1036,6 +1085,8 @@ def cmd_scan(args):
     print(f"  {Fore.GREEN}{Style.BRIGHT}SEO Analysis{Style.RESET_ALL}")
     if seo_score:
         print(f"    Score: {Fore.YELLOW}{seo_score}{Style.RESET_ALL}")
+    if results["seo"].get("grade"):
+        print(f"    Grade: {Fore.YELLOW}{results['seo']['grade']}{Style.RESET_ALL}")
     if results["seo"]["returncode"] == 0:
         print(f"    Status: {Fore.GREEN}Completed{Style.RESET_ALL}")
     else:
