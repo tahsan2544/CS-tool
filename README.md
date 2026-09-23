@@ -4,11 +4,11 @@
 
 ### 🔧 Comprehensive Website Measurement & Analysis Toolkit
 
-**18 specialized tools. One unified CLI. Complete website analysis.**
+**19 specialized tools. One unified CLI. Complete website analysis.**
 
 ![Python](https://img.shields.io/badge/Python-3.7%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-4C1?style=for-the-badge)
-![Tools](https://img.shields.io/badge/Tools-18-FF6B6B?style=for-the-badge)
+![Tools](https://img.shields.io/badge/Tools-19-FF6B6B?style=for-the-badge)
 ![Lines](https://img.shields.io/badge/Code-71%2C666%20lines-FFA500?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Stable-brightgreen?style=for-the-badge)
 
@@ -24,6 +24,7 @@
 - [Available Tools](#-available-tools)
 - [Usage Examples](#-usage-examples)
 - [Full Scan](#-full-scan)
+- [Upgrade Roadmap](#-upgrade-roadmap)
 - [Export Formats](#-export-formats)
 - [Tool Details](#-tool-details)
 - [Troubleshooting](#-troubleshooting)
@@ -34,7 +35,7 @@
 
 ## 🎯 Overview
 
-CS Tools is a unified suite of **18 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS Tools provides everything you need to measure, audit, and optimize any website.
+CS Tools is a unified suite of **19 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS Tools provides everything you need to measure, audit, and optimize any website.
 
 ### What Can You Analyze?
 
@@ -52,6 +53,7 @@ CS Tools is a unified suite of **18 specialized tools** for analyzing websites f
 | 🍪 **Privacy** | CookieAnalyzer | GDPR, CCPA, consent management |
 | 🔌 **API** | APIAnalyzer | REST/GraphQL testing, authentication |
 | 📊 **Monitoring** | UptimeChecker | Multi-protocol monitoring, SLO tracking |
+| 🗺️ **Upgrade Planning** | UpgradeAdvisor | Prioritized what-to-upgrade roadmap for a better rating |
 
 ---
 
@@ -79,8 +81,11 @@ python cstools.py seo -u https://example.com
 # Run a full security audit
 python cstools.py security -u https://example.com
 
-# Run ALL 18 tools at once
+# Run ALL analysis tools at once
 python cstools.py scan -u https://example.com --export all
+
+# Get a prioritized upgrade roadmap (what to fix for a better rating)
+python cstools.py upgrade -u https://example.com --export all
 ```
 
 ---
@@ -122,7 +127,7 @@ cstools seo -u https://example.com
 
 ---
 
-## 🛠️ Available Tools (18)
+## 🛠️ Available Tools (19)
 
 | # | Tool | Command | Category | Description |
 |---|------|---------|----------|-------------|
@@ -144,6 +149,7 @@ cstools seo -u https://example.com
 | 16 | **HTMLValidator** | `html` | 📝 Content | HTML standards, semantic, best practices validation |
 | 17 | **CDNAnalyzer** | `cdn` | 🌐 Network | CDN detection, caching, edge performance |
 | 18 | **CookieAnalyzer** | `cookies` | 🍪 Privacy | Cookie privacy, GDPR, CCPA, consent management |
+| 19 | **UpgradeAdvisor** | `upgrade` | 🗺️ Upgrade Planning | Prioritized what-to-upgrade roadmap for better rating |
 
 ---
 
@@ -191,6 +197,12 @@ python cstools.py api -u https://api.example.com --auth-type bearer --api-key YO
 
 # 🍪 Cookie Privacy (GDPR/CCPA)
 python cstools.py cookies -u https://example.com
+
+# 🗺️ Upgrade Roadmap (what to fix for a better rating)
+python cstools.py upgrade -u https://example.com --export all
+
+# 🗺️ Upgrade Roadmap — only specific areas
+python cstools.py upgrade -u https://example.com --only security seo content
 ```
 
 ### Advanced Usage
@@ -222,7 +234,7 @@ python cstools.py access -u https://example.com --level AAA
 
 ## 🔍 Full Scan
 
-Run **ALL 18 tools** on a single URL with one command:
+Run **all analysis tools** (17 scanners) on a single URL with one command:
 
 ```bash
 python cstools.py scan -u https://example.com --export all
@@ -231,28 +243,62 @@ python cstools.py scan -u https://example.com --export all
 ### What the Scan Does
 
 ```
-[1/18]  Running SEO Analysis...
-[2/18]  Running Security Analysis...
-[3/18]  Running Performance Analysis...
-[4/18]  Running Uptime Check...
-[5/18]  Running Mobile Analysis...
-[6/18]  Running Content Analysis...
-[7/18]  Running Network Diagnostics...
-[8/18]  Running Accessibility Analysis...
-[9/18]  Running Image Analysis...
-[10/18] Running API Analysis...
-[11/18] Running Video Analysis...
-[12/18] Running Schema Analysis...
-[13/18] Running Email Deliverability...
-[14/18] Running Sitemap & Crawlability...
-[15/18] Running HTML Validation...
-[16/18] Running CDN Analysis...
-[17/18] Running Cookie Privacy...
-[18/18] Running Load Testing...
+[1/17]  Running SEO Analysis...
+[2/17]  Running Security Analysis...
+[3/17]  Running Performance Analysis...
+[4/17]  Running Uptime Check...
+[5/17]  Running Mobile Analysis...
+[6/17]  Running Content Analysis...
+[7/17]  Running Network Diagnostics...
+[8/17]  Running Accessibility Analysis...
+[9/17]  Running Image Analysis...
+[10/17] Running API Analysis...
+[11/17] Running Video Analysis...
+[12/17] Running Schema Analysis...
+[13/17] Running Email Deliverability...
+[14/17] Running Sitemap & Crawlability...
+[15/17] Running HTML Validation...
+[16/17] Running CDN Analysis...
+[17/17] Running Cookie Privacy...
 
 ==========================================
          COMBINED SCAN RESULTS
 ==========================================
+```
+
+> LoadStorm is intentionally excluded from `scan` (it generates traffic). Run it separately with `cstools loadstorm`. Use `cstools upgrade` after a scan to get the prioritized improvement roadmap.
+
+---
+
+## 🗺️ Upgrade Roadmap
+
+The `upgrade` command is the **"what should I improve"** section. It:
+
+1. Runs the scoring tools and collects every score
+2. Computes one **overall site rating** (weighted across tools)
+3. Prints a **prioritized upgrade list** — biggest rating gain first
+4. Separates **quick wins** (low effort) from **biggest moves** (plan these)
+5. Projects your rating if you complete the roadmap
+
+```bash
+python cstools.py upgrade -u https://example.com --export all
+```
+
+**Sample output:**
+
+```
+  OVERALL SITE RATING
+  48.1 / 100   Grade F
+    Distance to A (90): 41.9 points
+
+  WHAT TO UPGRADE (prioritized — biggest rating gain first)
+  #   Upgrade area      Now   Gain Effort  Priority  Why
+  1   security         17.0 +  6.6 High        2.67  Missing X-Frame-Options
+  2   seo              34.8 +  6.6 High        1.65  Add an H1 tag
+  ...
+  QUICK WINS (low effort, do these first)
+  BIGGEST RATING MOVES (plan these)
+  POTENTIAL: projected rating → 75.4 (C)
 ```
 
 ---
@@ -518,6 +564,34 @@ python cstools.py cookies -u https://example.com
 - Third-party cookie analysis
 
 **Output:** Privacy compliance assessment, recommendations
+
+---
+
+### 🗺️ UpgradeAdvisor — What to Upgrade for a Better Rating
+
+Aggregates scores from the other tools into one overall site rating and a prioritized upgrade roadmap.
+
+```bash
+python cstools.py upgrade -u https://example.com --export all
+
+# Only specific areas
+python cstools.py upgrade -u https://example.com --only security seo content
+```
+
+**What it does:**
+- Runs the scoring tools and collects each score
+- Computes a **weighted overall site rating** (0–100 + letter grade)
+- Builds a **prioritized upgrade list** (biggest rating gain first)
+- Splits items into **Quick Wins** (low effort) vs **Biggest Moves** (plan these)
+- Shows estimated **+points** each fix contributes to the overall rating
+- Projects your rating if the full roadmap is completed
+
+**Output sections:**
+- Overall site rating + distance to grade A
+- Scorecard by tool (score, grade, status bar)
+- Prioritized “What to Upgrade” table (Now / Gain / Effort / Priority / Why)
+- Quick wins and biggest rating moves with sample issues
+- Exportable JSON + HTML roadmap report
 
 ---
 

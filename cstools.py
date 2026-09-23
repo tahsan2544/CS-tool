@@ -28,6 +28,10 @@ VIDEO = os.path.join(SCRIPT_DIR, "VideoAnalyzer", "videoanalyzer.py")
 SCHEMA = os.path.join(SCRIPT_DIR, "SchemaAnalyzer", "schemaanalyzer.py")
 EMAIL = os.path.join(SCRIPT_DIR, "EmailAnalyzer", "emailanalyzer.py")
 SITEMAP = os.path.join(SCRIPT_DIR, "SitemapAnalyzer", "sitemapanalyzer.py")
+HTMLV = os.path.join(SCRIPT_DIR, "HTMLValidator", "htmlvalidator.py")
+CDN = os.path.join(SCRIPT_DIR, "CDNAnalyzer", "cdnanalyzer.py")
+COOKIES = os.path.join(SCRIPT_DIR, "CookieAnalyzer", "cookieanalyzer.py")
+UPGRADE = os.path.join(SCRIPT_DIR, "UpgradeAdvisor", "upgradetool.py")
 
 try:
     from colorama import init as colorama_init, Fore, Style
@@ -62,6 +66,10 @@ BANNER = f"""{Fore.CYAN}{Style.BRIGHT}
     ║{Fore.GREEN}  schema     {Fore.WHITE}- Structured Data / Schema.org         {Fore.CYAN}║
     ║{Fore.GREEN}  email      {Fore.WHITE}- Email Deliverability (SPF/DKIM/DMARC) {Fore.CYAN}║
     ║{Fore.GREEN}  sitemap    {Fore.WHITE}- Sitemap & Crawlability Analysis     {Fore.CYAN}║
+    ║{Fore.GREEN}  html       {Fore.WHITE}- HTML Validation & Standards          {Fore.CYAN}║
+    ║{Fore.GREEN}  cdn        {Fore.WHITE}- CDN & Caching Performance           {Fore.CYAN}║
+    ║{Fore.GREEN}  cookies    {Fore.WHITE}- Cookie Privacy & GDPR/CCPA          {Fore.CYAN}║
+    ║{Fore.GREEN}  upgrade    {Fore.WHITE}- What to upgrade for better rating    {Fore.CYAN}║
     ║{Fore.GREEN}  scan       {Fore.WHITE}- Run ALL tools on a URL                {Fore.CYAN}║
     ║{Fore.GREEN}  list       {Fore.WHITE}- List all available tools              {Fore.CYAN}║
     ╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
@@ -157,6 +165,30 @@ TOOLS = [
         "command": "sitemap",
         "path": SITEMAP,
         "description": "Sitemap & Crawlability - robots.txt, sitemaps, indexability",
+    },
+    {
+        "name": "HTMLValidator",
+        "command": "html",
+        "path": HTMLV,
+        "description": "HTML Validation - Standards, Semantic, Best Practices",
+    },
+    {
+        "name": "CDNAnalyzer",
+        "command": "cdn",
+        "path": CDN,
+        "description": "CDN Analysis - CDN Detection, Caching, Edge Performance",
+    },
+    {
+        "name": "CookieAnalyzer",
+        "command": "cookies",
+        "path": COOKIES,
+        "description": "Cookie Privacy - GDPR, CCPA, Consent Management",
+    },
+    {
+        "name": "UpgradeAdvisor",
+        "command": "upgrade",
+        "path": UPGRADE,
+        "description": "Upgrade Roadmap - Prioritized what-to-upgrade for better rating",
     },
 ]
 
@@ -456,6 +488,70 @@ def cmd_sitemap(args):
     return run_tool(SITEMAP, extra)
 
 
+def cmd_html(args):
+    extra = []
+    if args.url:
+        extra += ["-u", args.url]
+    if args.timeout is not None:
+        extra += ["-t", str(args.timeout)]
+    if args.export:
+        extra += ["--export", args.export]
+    if args.no_color:
+        extra.append("--no-color")
+    if args.verbose:
+        extra.append("-v")
+    return run_tool(HTMLV, extra)
+
+
+def cmd_cdn(args):
+    extra = []
+    if args.url:
+        extra += ["-u", args.url]
+    if args.timeout is not None:
+        extra += ["-t", str(args.timeout)]
+    if args.export:
+        extra += ["--export", args.export]
+    if args.no_color:
+        extra.append("--no-color")
+    if args.verbose:
+        extra.append("-v")
+    return run_tool(CDN, extra)
+
+
+def cmd_cookies(args):
+    extra = []
+    if args.url:
+        extra += ["-u", args.url]
+    if args.timeout is not None:
+        extra += ["-t", str(args.timeout)]
+    if args.export:
+        extra += ["--export", args.export]
+    if args.no_color:
+        extra.append("--no-color")
+    if args.verbose:
+        extra.append("-v")
+    return run_tool(COOKIES, extra)
+
+
+def cmd_upgrade(args):
+    extra = []
+    if args.url:
+        extra += ["-u", args.url]
+    if args.timeout is not None:
+        extra += ["-t", str(args.timeout)]
+    if args.export:
+        extra += ["--export", args.export]
+    if args.no_color:
+        extra.append("--no-color")
+    if args.verbose:
+        extra.append("-v")
+    only = getattr(args, "only", None)
+    if only:
+        extra.append("--only")
+        extra.extend(only)
+    return run_tool(UPGRADE, extra)
+
+
 def cmd_list(args):
     print(f"\n{Fore.CYAN}{Style.BRIGHT}Available Tools:{Style.RESET_ALL}\n")
     print(f"  {Fore.GREEN}{'Command':<15} {'Tool':<20} {'Description'}{Style.RESET_ALL}")
@@ -467,6 +563,7 @@ def cmd_list(args):
     print(f"    python cstools.py loadstorm -u https://target.com -c 100")
     print(f"    python cstools.py seo -u https://example.com --export all")
     print(f"    python cstools.py security -u https://target.com")
+    print(f"    python cstools.py upgrade -u https://target.com --export all")
     print(f"    python cstools.py scan -u https://target.com --export all")
     print(f"    python cstools.py list\n")
     return 0
@@ -494,7 +591,7 @@ def cmd_scan(args):
     results = {}
 
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [1/14] Running SEO Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [1/17] Running SEO Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     seo_args = ["-u", url]
     if export != "none":
@@ -516,7 +613,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [2/14] Running Security Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [2/17] Running Security Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     sec_args = ["-u", url]
     if export != "none":
@@ -538,7 +635,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [3/14] Running Performance Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [3/17] Running Performance Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     perf_args = ["-u", url]
     if export != "none":
@@ -560,7 +657,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [4/14] Running Uptime Check...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [4/17] Running Uptime Check...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     uptime_args = ["-u", url]
     if export != "none":
@@ -582,7 +679,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [5/14] Running Mobile Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [5/17] Running Mobile Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     mobile_args = ["-u", url]
     if export != "none":
@@ -606,7 +703,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [6/14] Running Content Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [6/17] Running Content Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     content_args = ["-u", url]
     if export != "none":
@@ -628,7 +725,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [7/14] Running Network Diagnostics...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [7/17] Running Network Diagnostics...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     network_args = ["-u", url]
     if export != "none":
@@ -650,7 +747,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [8/14] Running Accessibility Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [8/17] Running Accessibility Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     access_args = ["-u", url]
     if export != "none":
@@ -674,7 +771,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [9/14] Running Image Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [9/17] Running Image Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     image_args = ["-u", url]
     if export != "none":
@@ -696,7 +793,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [10/14] Running API Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [10/17] Running API Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     api_args = ["-u", url]
     if export != "none":
@@ -718,7 +815,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [11/14] Running Video Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [11/17] Running Video Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     video_args = ["-u", url]
     if export != "none":
@@ -740,7 +837,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [12/14] Running Schema Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [12/17] Running Schema Analysis...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     schema_args = ["-u", url]
     if export != "none":
@@ -762,7 +859,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [13/14] Running Email Deliverability...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [13/17] Running Email Deliverability...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     email_args = ["-u", url]
     if export != "none":
@@ -784,7 +881,7 @@ def cmd_scan(args):
     }
 
     print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [14/14] Running Sitemap & Crawlability...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [14/17] Running Sitemap & Crawlability...{Style.RESET_ALL}")
     print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
     sitemap_args = ["-u", url]
     if export != "none":
@@ -805,7 +902,73 @@ def cmd_scan(args):
         "grade": sitemap_grade,
     }
 
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}{'='*70}{Style.RESET_ALL}")
+    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [15/17] Running HTML Validation...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    html_args = ["-u", url]
+    if export != "none":
+        html_args += ["--export", export]
+    if args.no_color:
+        html_args.append("--no-color")
+    html_result = subprocess.run(
+        [sys.executable, HTMLV] + html_args,
+        capture_output=True, text=True
+    )
+    html_output = html_result.stdout
+    html_score = extract_score_from_output(r'TOTAL\s+█+\s*(\d+)/100', html_output) or extract_score_from_output(r'(\d+)/100', html_output)
+    html_grade = extract_score_from_output(r'GRADE:\s*(\w+)', html_output)
+    results["html"] = {
+        "output": html_output,
+        "returncode": html_result.returncode,
+        "score": html_score,
+        "grade": html_grade,
+    }
+
+    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [16/17] Running CDN Analysis...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    cdn_args = ["-u", url]
+    if export != "none":
+        cdn_args += ["--export", export]
+    if args.no_color:
+        cdn_args.append("--no-color")
+    cdn_result = subprocess.run(
+        [sys.executable, CDN] + cdn_args,
+        capture_output=True, text=True
+    )
+    cdn_output = cdn_result.stdout
+    cdn_score = extract_score_from_output(r'TOTAL:\s*(\d+(?:\.\d+)?)/100', cdn_output) or extract_score_from_output(r'(\d+)/100', cdn_output)
+    cdn_grade = extract_score_from_output(r'GRADE:\s*(\w+)', cdn_output)
+    results["cdn"] = {
+        "output": cdn_output,
+        "returncode": cdn_result.returncode,
+        "score": cdn_score,
+        "grade": cdn_grade,
+    }
+
+    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}  [17/17] Running Cookie Privacy...{Style.RESET_ALL}")
+    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    cookies_args = ["-u", url]
+    if export != "none":
+        cookies_args += ["--export", export]
+    if args.no_color:
+        cookies_args.append("--no-color")
+    cookies_result = subprocess.run(
+        [sys.executable, COOKIES] + cookies_args,
+        capture_output=True, text=True
+    )
+    cookies_output = cookies_result.stdout
+    cookies_score = extract_score_from_output(r'Total Score:\s*(\d+)/100', cookies_output) or extract_score_from_output(r'(\d+)/100', cookies_output)
+    cookies_grade = extract_score_from_output(r'Grade:\s*(\w+)', cookies_output)
+    results["cookies"] = {
+        "output": cookies_output,
+        "returncode": cookies_result.returncode,
+        "score": cookies_score,
+        "grade": cookies_grade,
+    }
+
+    print(f"{Fore.CYAN}{Style.BRIGHT}{'='*70}{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{Style.BRIGHT}  COMBINED SCAN RESULTS{Style.RESET_ALL}")
     print(f"{Fore.CYAN}{Style.BRIGHT}{'='*70}{Style.RESET_ALL}")
     print(f"  {Fore.WHITE}Target:{Style.RESET_ALL}   {url}")
@@ -966,6 +1129,36 @@ def cmd_scan(args):
     else:
         print(f"    Status: {Fore.RED}Failed{Style.RESET_ALL}")
 
+    print(f"\n  {Fore.GREEN}{Style.BRIGHT}HTML Validation{Style.RESET_ALL}")
+    if html_score:
+        print(f"    Score: {Fore.YELLOW}{html_score}/100{Style.RESET_ALL}")
+    if html_grade:
+        print(f"    Grade: {Fore.YELLOW}{html_grade}{Style.RESET_ALL}")
+    if results["html"]["returncode"] == 0:
+        print(f"    Status: {Fore.GREEN}Completed{Style.RESET_ALL}")
+    else:
+        print(f"    Status: {Fore.RED}Failed{Style.RESET_ALL}")
+
+    print(f"\n  {Fore.GREEN}{Style.BRIGHT}CDN Analysis{Style.RESET_ALL}")
+    if cdn_score:
+        print(f"    Score: {Fore.YELLOW}{cdn_score}/100{Style.RESET_ALL}")
+    if cdn_grade:
+        print(f"    Grade: {Fore.YELLOW}{cdn_grade}{Style.RESET_ALL}")
+    if results["cdn"]["returncode"] == 0:
+        print(f"    Status: {Fore.GREEN}Completed{Style.RESET_ALL}")
+    else:
+        print(f"    Status: {Fore.RED}Failed{Style.RESET_ALL}")
+
+    print(f"\n  {Fore.GREEN}{Style.BRIGHT}Cookie Privacy{Style.RESET_ALL}")
+    if cookies_score:
+        print(f"    Score: {Fore.YELLOW}{cookies_score}/100{Style.RESET_ALL}")
+    if cookies_grade:
+        print(f"    Grade: {Fore.YELLOW}{cookies_grade}{Style.RESET_ALL}")
+    if results["cookies"]["returncode"] == 0:
+        print(f"    Status: {Fore.GREEN}Completed{Style.RESET_ALL}")
+    else:
+        print(f"    Status: {Fore.RED}Failed{Style.RESET_ALL}")
+
     print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
 
     if export and export != "none":
@@ -1033,6 +1226,9 @@ def build_parser():
   {Fore.GREEN}schema{Style.RESET_ALL}     Run structured data analysis
   {Fore.GREEN}email{Style.RESET_ALL}      Run email deliverability analysis
   {Fore.GREEN}sitemap{Style.RESET_ALL}    Run sitemap & crawlability analysis
+  {Fore.GREEN}html{Style.RESET_ALL}       Run HTML validation
+  {Fore.GREEN}cdn{Style.RESET_ALL}        Run CDN analysis
+  {Fore.GREEN}cookies{Style.RESET_ALL}    Run cookie privacy analysis
   {Fore.GREEN}scan{Style.RESET_ALL}       Run ALL tools on a URL
   {Fore.GREEN}list{Style.RESET_ALL}       List available tools
 
@@ -1052,6 +1248,10 @@ def build_parser():
   python cstools.py schema -u https://example.com
   python cstools.py email -u example.com
   python cstools.py sitemap -u https://example.com
+  python cstools.py html -u https://example.com
+  python cstools.py cdn -u https://example.com
+  python cstools.py cookies -u https://example.com
+  python cstools.py upgrade -u https://example.com --export all
   python cstools.py scan -u https://target.com --export all
   python cstools.py list
 """
@@ -1208,6 +1408,39 @@ def build_parser():
     sp_sitemap.add_argument("--no-color", action="store_true", help="Disable colors")
     sp_sitemap.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     sp_sitemap.set_defaults(func=cmd_sitemap)
+
+    sp_html = subparsers.add_parser("html", help="Run HTML validation", add_help=False)
+    sp_html.add_argument("-u", "--url", help="Target URL")
+    sp_html.add_argument("-t", "--timeout", type=int, help="Request timeout")
+    sp_html.add_argument("--export", default="none", choices=["all", "json", "csv", "html", "none"], help="Export format")
+    sp_html.add_argument("--no-color", action="store_true", help="Disable colors")
+    sp_html.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    sp_html.set_defaults(func=cmd_html)
+
+    sp_cdn = subparsers.add_parser("cdn", help="Run CDN analysis", add_help=False)
+    sp_cdn.add_argument("-u", "--url", help="Target URL")
+    sp_cdn.add_argument("-t", "--timeout", type=int, help="Request timeout")
+    sp_cdn.add_argument("--export", default="none", choices=["all", "json", "csv", "html", "none"], help="Export format")
+    sp_cdn.add_argument("--no-color", action="store_true", help="Disable colors")
+    sp_cdn.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    sp_cdn.set_defaults(func=cmd_cdn)
+
+    sp_cookies = subparsers.add_parser("cookies", help="Run cookie privacy analysis", add_help=False)
+    sp_cookies.add_argument("-u", "--url", help="Target URL")
+    sp_cookies.add_argument("-t", "--timeout", type=int, help="Request timeout")
+    sp_cookies.add_argument("--export", default="none", choices=["all", "json", "csv", "html", "none"], help="Export format")
+    sp_cookies.add_argument("--no-color", action="store_true", help="Disable colors")
+    sp_cookies.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    sp_cookies.set_defaults(func=cmd_cookies)
+
+    sp_upgrade = subparsers.add_parser("upgrade", help="Prioritized upgrade roadmap for better rating", add_help=False)
+    sp_upgrade.add_argument("-u", "--url", help="Target URL")
+    sp_upgrade.add_argument("-t", "--timeout", type=int, help="Per-tool timeout")
+    sp_upgrade.add_argument("--export", default="none", choices=["all", "json", "html", "none"], help="Export format")
+    sp_upgrade.add_argument("--no-color", action="store_true", help="Disable colors")
+    sp_upgrade.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
+    sp_upgrade.add_argument("--only", nargs="*", help="Run only these tools by label")
+    sp_upgrade.set_defaults(func=cmd_upgrade)
 
     sp_scan = subparsers.add_parser("scan", help="Run all tools on a URL", add_help=False)
     sp_scan.add_argument("-u", "--url", required=True, help="Target URL")

@@ -1081,7 +1081,7 @@ def main():
     color = not args.no_color
     colors = Colors(color)
     print(f"{colors.bgblue}{colors.bold}{colors.white} {VERSION} SchemaAnalyzer — schema.org structured data deep analysis {colors.reset}")
-    print(colors.dim(BANNER))
+    print(f"{colors.dim}{BANNER}{colors.reset}")
     if not args.url.lower().startswith(("http://", "https://")):
         args.url = "https://" + args.url
     analyzer = SchemaAnalyzer(url=args.url, timeout=args.timeout, verbose=args.verbose, color=color)

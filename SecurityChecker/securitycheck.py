@@ -61,7 +61,7 @@ SEVERITY_COLORS = {
     "info": Fore.WHITE,
 }
 
-SEVERITY_POINTS = {"critical": 25, "high": 15, "medium": 10, "low": 5, "info": 0}
+SEVERITY_POINTS = {"critical": 25, "high": 15, "medium": 10, "low": 5, "info": 1}
 
 CVSS_WEIGHTS = {
     "critical": 10.0,
@@ -828,8 +828,6 @@ class SecurityAnalyzer:
         hostname = self.domain.split(":")[0]
         try:
             ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
             with socket.create_connection((hostname, 443), timeout=self.timeout) as sock:
                 with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
                     cert = ssock.getpeercert()
@@ -864,6 +862,12 @@ class SecurityAnalyzer:
                                          category,
                                          remediation="Verify your SSL certificate is properly installed.",
                                          owasp="A02", nist="SC", pci_dss="PCI-4")
+        except ssl.SSLCertVerificationError as e:
+            self.add_finding("SSL Certificate", "critical", False,
+                             "Certificate verification failed: " + str(e.verify_message),
+                             category,
+                             remediation="Install a valid SSL/TLS certificate from a trusted CA.",
+                             owasp="A02", nist="SC", pci_dss="PCI-4")
         except Exception as e:
             self.add_finding("SSL Connection", "high", False,
                              "SSL connection failed: " + str(e),
@@ -873,21 +877,42 @@ class SecurityAnalyzer:
 
         try:
             weak_protocols = []
-            proto_map = {
-                "SSLv2": getattr(ssl, "PROTOCOL_SSLv2", None),
-                "SSLv3": getattr(ssl, "PROTOCOL_SSLv3", None),
-                "TLSv1": getattr(ssl, "PROTOCOL_TLSv1", None),
-                "TLSv1.1": getattr(ssl, "PROTOCOL_TLSv1_1", None),
-            }
-            for pname, pval in proto_map.items():
-                if pval is not None:
-                    try:
-                        test_ctx = ssl.SSLContext(pval)
-                        test_ctx.check_hostname = False
-                        test_ctx.verify_mode = ssl.CERT_NONE
-                        weak_protocols.append(pname)
-                    except (ssl.SSLError, OSError):
-                        pass
+            tls_versions = []
+            if hasattr(ssl, "TLSVersion"):
+                tls_versions = [
+                    ("TLSv1", getattr(ssl.TLSVersion, "TLSv1", None)),
+                    ("TLSv1.1", getattr(ssl.TLSVersion, "TLSv1_1", None)),
+                ]
+            legacy_protocols = [
+                ("SSLv2", getattr(ssl, "PROTOCOL_SSLv2", None)),
+                ("SSLv3", getattr(ssl, "PROTOCOL_SSLv3", None)),
+            ]
+            for pname, pval in legacy_protocols:
+                if pval is None:
+                    continue
+                try:
+                    test_ctx = ssl.SSLContext(pval)
+                    test_ctx.check_hostname = False
+                    test_ctx.verify_mode = ssl.CERT_NONE
+                    with socket.create_connection((hostname, 443), timeout=self.timeout) as sock:
+                        with test_ctx.wrap_socket(sock, server_hostname=hostname):
+                            weak_protocols.append(pname)
+                except (ssl.SSLError, OSError, ValueError):
+                    pass
+            for pname, tver in tls_versions:
+                if tver is None:
+                    continue
+                try:
+                    test_ctx = ssl.create_default_context()
+                    test_ctx.check_hostname = False
+                    test_ctx.verify_mode = ssl.CERT_NONE
+                    test_ctx.minimum_version = tver
+                    test_ctx.maximum_version = tver
+                    with socket.create_connection((hostname, 443), timeout=self.timeout) as sock:
+                        with test_ctx.wrap_socket(sock, server_hostname=hostname):
+                            weak_protocols.append(pname)
+                except (ssl.SSLError, OSError, ValueError):
+                    pass
             if weak_protocols:
                 self.add_finding("Weak SSL Protocols", "high", False,
                                  "Supported weak protocols: " + ", ".join(weak_protocols),
@@ -5379,7 +5404,7 @@ class SecurityAnalyzer:
         max_cvss = max((f.cvss31["score"] for f in failed), default=0.0)
         covered = len({f.category for f in self.findings})
         coverage_score = (covered / len(CATEGORY_ORDER) * 100.0) if CATEGORY_ORDER else 100.0
-        risk_index = min(100.0, crit * 16 + high * 7 + medium * 3 + low * 1 + max_cvss * 4)
+        risk_index = min(100.0, crit * 10 + high * 4 + medium * 1.5 + low * 0.5 + max_cvss * 1.5)
         threat_penalty = min(15.0, float((self.threat_model or {}).get("risk_index", 0)) * 0.15)
         risk_index = min(100.0, risk_index + threat_penalty)
         defense_penalty = 0.0
