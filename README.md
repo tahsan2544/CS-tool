@@ -1,4 +1,4 @@
-# CS Tools
+# CS-Tool
 
 <div align="center">
 
@@ -42,7 +42,7 @@
 
 ## 🎯 Overview
 
-CS Tools is a unified suite of **19 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS Tools provides everything you need to measure, audit, and optimize any website.
+CS-Tool is a unified suite of **19 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS-Tool provides everything you need to measure, audit, and optimize any website.
 
 ### What Can You Analyze?
 
@@ -721,7 +721,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 <div align="center">
 
-### If CS Tools helps you, star the repo ⭐
+### If CS-Tool helps you, star the repo ⭐
 
 [![Star History Chart](https://api.star-history.com/svg?repos=tahsan2544/CS-tool&type=Date)](https://star-history.com/#tahsan2544/CS-tool&Date)
 

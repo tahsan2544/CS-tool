@@ -6,7 +6,7 @@ Security fixes are applied to the latest commit on the default branch (`Default-
 
 ## Reporting a vulnerability
 
-If you find a vulnerability **in CS Tools** (for example path traversal in an export writer, command injection in a wrapper, or unsafe deserialization):
+If you find a vulnerability **in CS-Tool** (for example path traversal in an export writer, command injection in a wrapper, or unsafe deserialization):
 
 1. **Do not** open a public GitHub issue.
 2. Report privately via GitHub Security Advisories on [tahsan2544/CS-tool](https://github.com/tahsan2544/CS-tool/security/advisories), or contact the maintainer through GitHub.
@@ -14,7 +14,7 @@ If you find a vulnerability **in CS Tools** (for example path traversal in an ex
 
 You should receive an acknowledgement within a few days. Fixes are coordinated before public disclosure.
 
-## What CS Tools does against targets
+## What CS-Tool does against targets
 
 - Analysis tools send ordinary HTTP(S)/DNS/TLS probes to the URL **you** supply.
 - `loadstorm` generates load — only use it on systems you own or have explicit permission to test.

@@ -1,6 +1,6 @@
-# Contributing to CS Tools
+# Contributing to CS-Tool
 
-Thanks for helping improve CS Tools. This project measures websites from many angles — every good bug report and tool upgrade makes the suite more useful.
+Thanks for helping improve CS-Tool. This project measures websites from many angles — every good bug report and tool upgrade makes the suite more useful.
 
 ## Ground rules
 
@@ -61,6 +61,6 @@ Do **not** run `loadstorm` against third-party sites without permission.
 - Keep PRs focused on one concern
 - Link related issues
 
-## Reporting security issues in CS Tools itself
+## Reporting security issues in CS-Tool itself
 
 Please see [SECURITY.md](SECURITY.md). Do not open a public issue for vulnerabilities in this codebase.

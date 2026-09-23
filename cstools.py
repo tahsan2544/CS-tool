@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-CSTools - Unified Security & Analysis CLI
-Wraps LoadStorm, SEOChecker, and SecurityChecker into one interface.
+CS-Tool — Unified website measurement & analysis CLI.
+Nineteen tools. One entry point. Measure, audit, upgrade.
 """
 
 import os
@@ -11,6 +11,9 @@ import subprocess
 import json
 import re
 from datetime import datetime
+
+APP_NAME = "CS-Tool"
+APP_VERSION = "1.2.0"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOADSTORM = os.path.join(SCRIPT_DIR, "LoadStorm", "loadstorm.py")
@@ -41,38 +44,100 @@ except ImportError:
         def __getattr__(self, n): return ''
     Fore = Style = _Fake()
 
-BANNER = f"""{Fore.CYAN}{Style.BRIGHT}
-    ╔══════════════════════════════════════════════════════════════╗
-    ║{Fore.WHITE}   ██████╗██████╗ ████████╗███████╗██╗         ██╗      {Fore.CYAN}║
-    ║{Fore.WHITE}  ██╔════╝██╔══██╗╚══██╔══╝██╔════╝██║         ██║      {Fore.CYAN}║
-    ║{Fore.WHITE}  ██║     ██████╔╝   ██║   █████╗  ██║         ██║      {Fore.CYAN}║
-    ║{Fore.WHITE}  ██║     ██╔══██╗   ██║   ██╔══╝  ██║         ██║      {Fore.CYAN}║
-    ║{Fore.WHITE}  ╚██████╗██║  ██║   ██║   ███████╗███████╗    ██║      {Fore.CYAN}║
-    ║{Fore.WHITE}   ╚═════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚══════╝    ╚═╝      {Fore.CYAN}║
-    ║{Fore.YELLOW}        Ultimate Website Measurement Toolkit             {Fore.CYAN}║
-    ╠══════════════════════════════════════════════════════════════╣
-    ║{Fore.GREEN}  loadstorm  {Fore.WHITE}- Load & Stress Testing                {Fore.CYAN}║
-    ║{Fore.GREEN}  seo        {Fore.WHITE}- SEO Quality Analysis                 {Fore.CYAN}║
-    ║{Fore.GREEN}  security   {Fore.WHITE}- Website Security Analysis             {Fore.CYAN}║
-    ║{Fore.GREEN}  perf       {Fore.WHITE}- Performance & Core Web Vitals         {Fore.CYAN}║
-    ║{Fore.GREEN}  uptime     {Fore.WHITE}- Uptime & Availability Monitor        {Fore.CYAN}║
-    ║{Fore.GREEN}  mobile     {Fore.WHITE}- Mobile-Friendliness Analysis         {Fore.CYAN}║
-    ║{Fore.GREEN}  content    {Fore.WHITE}- Content Quality Analysis             {Fore.CYAN}║
-    ║{Fore.GREEN}  network    {Fore.WHITE}- Network Diagnostics & Analysis       {Fore.CYAN}║
-    ║{Fore.GREEN}  access     {Fore.WHITE}- WCAG 2.1 Accessibility Compliance    {Fore.CYAN}║
-    ║{Fore.GREEN}  image      {Fore.WHITE}- Image Optimization Analysis           {Fore.CYAN}║
-    ║{Fore.GREEN}  api        {Fore.WHITE}- REST/GraphQL API Testing             {Fore.CYAN}║
-    ║{Fore.GREEN}  video      {Fore.WHITE}- Video SEO & Accessibility            {Fore.CYAN}║
-    ║{Fore.GREEN}  schema     {Fore.WHITE}- Structured Data / Schema.org         {Fore.CYAN}║
-    ║{Fore.GREEN}  email      {Fore.WHITE}- Email Deliverability (SPF/DKIM/DMARC) {Fore.CYAN}║
-    ║{Fore.GREEN}  sitemap    {Fore.WHITE}- Sitemap & Crawlability Analysis     {Fore.CYAN}║
-    ║{Fore.GREEN}  html       {Fore.WHITE}- HTML Validation & Standards          {Fore.CYAN}║
-    ║{Fore.GREEN}  cdn        {Fore.WHITE}- CDN & Caching Performance           {Fore.CYAN}║
-    ║{Fore.GREEN}  cookies    {Fore.WHITE}- Cookie Privacy & GDPR/CCPA          {Fore.CYAN}║
-    ║{Fore.GREEN}  upgrade    {Fore.WHITE}- What to upgrade for better rating    {Fore.CYAN}║
-    ║{Fore.GREEN}  scan       {Fore.WHITE}- Run ALL tools on a URL                {Fore.CYAN}║
-    ║{Fore.GREEN}  list       {Fore.WHITE}- List all available tools              {Fore.CYAN}║
-    ╚══════════════════════════════════════════════════════════════╝{Style.RESET_ALL}
+# ── Palette ──────────────────────────────────────────────────────────────────
+# Brand: electric blue + magenta. Status: green/amber/red. Body: white/dim.
+C = {
+    "brand":   Fore.LIGHTBLUE_EX + Style.BRIGHT,
+    "accent":  Fore.LIGHTMAGENTA_EX + Style.BRIGHT,
+    "gold":    Fore.LIGHTYELLOW_EX + Style.BRIGHT,
+    "ok":      Fore.LIGHTGREEN_EX + Style.BRIGHT,
+    "warn":    Fore.LIGHTYELLOW_EX,
+    "bad":     Fore.LIGHTRED_EX + Style.BRIGHT,
+    "dim":     Style.DIM,
+    "head":    Fore.CYAN + Style.BRIGHT,
+    "cmd":     Fore.LIGHTGREEN_EX,
+    "desc":    Fore.WHITE,
+    "rule":    Fore.BLUE,
+    "reset":   Style.RESET_ALL,
+}
+
+def _dim(s):
+    return f"{C['dim']}{s}{C['reset']}"
+
+def _rule(ch="─", n=68):
+    return f"{C['rule']}{Style.DIM}{ch * n}{C['reset']}"
+
+def _tag(text, color="accent"):
+    return f"{C[color]}{text}{C['reset']}"
+
+def _cmd(text):
+    return f"{C['cmd']}{Style.BRIGHT}{text}{C['reset']}"
+
+BANNER = f"""{C['brand']}
+    ╔══════════════════════════════════════════════════════════════════╗
+    ║                                                                  ║
+    ║{C['accent']}   ██████╗██╗     ██╗   ██╗███████╗███████╗ ██╗     {C['brand']}              ║
+    ║{C['accent']}  ██╔════╝██║     ██║   ██║██╔════╝██╔════╝██║     {C['brand']}               ║
+    ║{C['accent']}  ██║     ██║     ██║   ██║█████╗  █████╗  ██║     {C['brand']}               ║
+    ║{C['accent']}  ██║     ██║     ██║   ██║██╔══╝  ██╔══╝  ██║     {C['brand']}               ║
+    ║{C['accent']}  ╚██████╗███████╗╚██████╔╝███████╗███████╗███████╗ {C['brand']}              ║
+    ║{C['accent']}   ╚═════╝╚══════╝ ╚═════╝ ╚══════╝╚══════╝╚══════╝{C['brand']}               ║
+    ║                                                                  ║
+    ║{C['gold']}  CS-Tool{C['brand']}  ·  {C['desc']}Website Measurement Suite{C['brand']}  ·  {C['gold']}v{APP_VERSION}{C['brand']}                ║
+    ║{C['dim']}  19 tools · one CLI · measure → audit → upgrade{C['brand']}                  ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║{C['gold']}  ◆ META{C['brand']}                                                          ║
+    ║{C['brand']}    {C['cmd']}scan{C['brand']}       {C['desc']} run all analyzers on a URL{C['brand']}                        ║
+    ║{C['brand']}    {C['cmd']}upgrade{C['brand']}    {C['desc']} prioritized what-to-upgrade roadmap{C['brand']}               ║
+    ║{C['brand']}    {C['cmd']}list{C['brand']}       {C['desc']} show every command{C['brand']}                                ║
+    ║                                                                  ║
+    ║{C['gold']}  ◆ CORE ANALYZERS{C['brand']}                                                ║
+    ║{C['brand']}    {C['cmd']}seo{C['brand']}        {C['desc']} search visibility & rankings{C['brand']}                      ║
+    ║{C['brand']}    {C['cmd']}security{C['brand']}   {C['desc']} headers, SSL, vulns, compliance{C['brand']}                   ║
+    ║{C['brand']}    {C['cmd']}perf{C['brand']}       {C['desc']} Core Web Vitals & budgets{C['brand']}                         ║
+    ║{C['brand']}    {C['cmd']}uptime{C['brand']}     {C['desc']} availability & response time{C['brand']}                      ║
+    ║{C['brand']}    {C['cmd']}loadstorm{C['brand']}  {C['desc']} load & stress testing{C['brand']}                             ║
+    ║                                                                  ║
+    ║{C['gold']}  ◆ CONTENT · MEDIA · DATA{C['brand']}                                        ║
+    ║{C['brand']}    {C['cmd']}content{C['brand']}    {C['desc']} readability, quality, structure{C['brand']}                   ║
+    ║{C['brand']}    {C['cmd']}html{C['brand']}       {C['desc']} HTML standards validation{C['brand']}                         ║
+    ║{C['brand']}    {C['cmd']}schema{C['brand']}     {C['desc']} structured data / Schema.org{C['brand']}                      ║
+    ║{C['brand']}    {C['cmd']}sitemap{C['brand']}    {C['desc']} crawlability & indexability{C['brand']}                       ║
+    ║{C['brand']}    {C['cmd']}image{C['brand']}      {C['desc']} image optimization{C['brand']}                                ║
+    ║{C['brand']}    {C['cmd']}video{C['brand']}      {C['desc']} video SEO & accessibility{C['brand']}                         ║
+    ║                                                                  ║
+    ║{C['gold']}  ◆ PLATFORM{C['brand']}                                                      ║
+    ║{C['brand']}    {C['cmd']}mobile{C['brand']}     {C['desc']} responsive, PWA, touch{C['brand']}                            ║
+    ║{C['brand']}    {C['cmd']}access{C['brand']}     {C['desc']} WCAG 2.1/2.2 accessibility{C['brand']}                        ║
+    ║{C['brand']}    {C['cmd']}network{C['brand']}    {C['desc']} DNS, TLS, ports, latency{C['brand']}                          ║
+    ║{C['brand']}    {C['cmd']}cdn{C['brand']}        {C['desc']} CDN detection & caching{C['brand']}                           ║
+    ║{C['brand']}    {C['cmd']}api{C['brand']}        {C['desc']} REST / GraphQL quality{C['brand']}                            ║
+    ║{C['brand']}    {C['cmd']}email{C['brand']}      {C['desc']} SPF · DKIM · DMARC deliverability{C['brand']}                 ║
+    ║{C['brand']}    {C['cmd']}cookies{C['brand']}    {C['desc']} GDPR / CCPA cookie privacy{C['brand']}                        ║
+    ║                                                                  ║
+    ╠══════════════════════════════════════════════════════════════════╣
+    ║{C['dim']}  python cstools.py <command> -u https://example.com{C['brand']}              ║
+    ║{C['dim']}  python cstools.py upgrade -u https://example.com{C['brand']}                ║
+    ║{C['dim']}  python cstools.py scan -u https://example.com --export all{C['brand']}      ║
+    ╚══════════════════════════════════════════════════════════════════╝{C['reset']}
+"""
+
+EPILOG = f"""{C['head']}examples:{C['reset']}
+  {_cmd('python cstools.py')} {C['desc']}seo -u https://example.com{C['reset']}
+  {_cmd('python cstools.py')} {C['desc']}security -u https://example.com --export all{C['reset']}
+  {_cmd('python cstools.py')} {C['desc']}perf -u https://example.com -t 30{C['reset']}
+  {_cmd('python cstools.py')} {C['desc']}upgrade -u https://example.com --export all{C['reset']}
+  {_cmd('python cstools.py')} {C['desc']}scan -u https://example.com --export all{C['reset']}
+  {_cmd('python cstools.py')} {C['desc']}list{C['reset']}
+
+{C['head']}command groups:{C['reset']}
+  {C['gold']}meta{C['reset']}        scan · upgrade · list
+  {C['gold']}core{C['reset']}        seo · security · perf · uptime · loadstorm
+  {C['gold']}content{C['reset']}     content · html · schema · sitemap · image · video
+  {C['gold']}platform{C['reset']}    mobile · access · network · cdn · api · email · cookies
+
+{C['dim']}Docs: https://github.com/tahsan2544/CS-tool{C['reset']}
+{C['dim']}Report issues: https://github.com/tahsan2544/CS-tool/issues{C['reset']}
 """
 
 TOOLS = [
@@ -195,7 +260,7 @@ TOOLS = [
 
 def run_tool(tool_path, extra_args):
     if not os.path.exists(tool_path):
-        print(f"{Fore.RED}[ERROR] Tool not found: {tool_path}{Style.RESET_ALL}")
+        print(f"{C['bad']}[ERROR] Tool not found: {tool_path}{C['reset']}")
         return 1
     cmd = [sys.executable, tool_path] + extra_args
     result = subprocess.run(cmd)
@@ -553,19 +618,37 @@ def cmd_upgrade(args):
 
 
 def cmd_list(args):
-    print(f"\n{Fore.CYAN}{Style.BRIGHT}Available Tools:{Style.RESET_ALL}\n")
-    print(f"  {Fore.GREEN}{'Command':<15} {'Tool':<20} {'Description'}{Style.RESET_ALL}")
-    print(f"  {Fore.CYAN}{'-'*75}{Style.RESET_ALL}")
-    for tool in TOOLS:
-        print(f"  {Fore.WHITE}{tool['command']:<15} {Fore.YELLOW}{tool['name']:<20} {Fore.WHITE}{tool['description']}{Style.RESET_ALL}")
-    print(f"\n  {Fore.CYAN}Usage:{Style.RESET_ALL}")
-    print(f"    python cstools.py <command> [options]")
-    print(f"    python cstools.py loadstorm -u https://target.com -c 100")
-    print(f"    python cstools.py seo -u https://example.com --export all")
-    print(f"    python cstools.py security -u https://target.com")
-    print(f"    python cstools.py upgrade -u https://target.com --export all")
-    print(f"    python cstools.py scan -u https://target.com --export all")
-    print(f"    python cstools.py list\n")
+    by_cmd = {t["command"]: t for t in TOOLS}
+    groups = [
+        ("META", ["scan", "upgrade", "list"]),
+        ("CORE ANALYZERS", ["seo", "security", "perf", "uptime", "loadstorm"]),
+        ("CONTENT · MEDIA · DATA", ["content", "html", "schema", "sitemap", "image", "video"]),
+        ("PLATFORM", ["mobile", "access", "network", "cdn", "api", "email", "cookies"]),
+    ]
+    print(f"\n  {_rule('═', 78)}")
+    print(f"  {_tag(APP_NAME, 'gold')} {C['head']}available tools {C['dim']}· {sum(len(c) for _, c in groups)} commands{C['reset']}")
+    print(f"  {_rule('═', 78)}")
+    for title, cmds in groups:
+        print(f"\n  {C['gold']}{title}{C['reset']}")
+        for cmd in cmds:
+            tool = by_cmd.get(cmd)
+            if tool is None:
+                extra = {
+                    "scan": ("Scanner", "Run every analyzer on one URL"),
+                    "list": ("List", "Show this tool listing"),
+                }.get(cmd, (cmd, ""))
+                print(f"    {_cmd(f'{cmd:<11}')} {C['desc']}{extra[0]:<22} {C['dim']}{extra[1]}{C['reset']}")
+            else:
+                print(f"    {_cmd(f'{cmd:<11}')} {C['desc']}{tool['name']:<22} {C['dim']}{tool['description']}{C['reset']}")
+    print(f"\n  {C['head']}usage:{C['reset']}")
+    for ex in (
+        "python cstools.py <command> [options]",
+        "python cstools.py seo -u https://example.com --export all",
+        "python cstools.py upgrade -u https://example.com --export all",
+        "python cstools.py scan -u https://example.com --export all",
+    ):
+        print(f"    {_dim(ex)}")
+    print(f"  {_rule('═', 78)}\n")
     return 0
 
 
@@ -579,20 +662,18 @@ def extract_score_from_output(output, pattern):
 def cmd_scan(args):
     url = args.url
     if not url:
-        print(f"{Fore.RED}[ERROR] URL is required for scan command. Use: cstools scan -u <url>{Style.RESET_ALL}")
+        print(f"{C['bad']}[ERROR] URL is required for scan command. Use: cstools scan -u <url>{C['reset']}")
         return 1
 
     export = args.export or "none"
-    print(f"{Fore.CYAN}{Style.BRIGHT}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{Style.BRIGHT}  CSTools Full Scan: {url}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{Style.BRIGHT}  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{Style.BRIGHT}{'='*70}{Style.RESET_ALL}\n")
+    print(f"{C['brand']}{Style.BRIGHT}{'═' * 70}{C['reset']}")
+    print(f"{C['brand']}{Style.BRIGHT}  {APP_NAME} full scan{C['reset']}{C['dim']}  {url}{C['reset']}")
+    print(f"{C['dim']}  started {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{C['reset']}")
+    print(f"{C['brand']}{Style.BRIGHT}{'═' * 70}{C['reset']}\n")
 
     results = {}
 
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [1/17] Running SEO Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[1/17] {C['gold']}Running SEO Analysis...{C['reset']}")
     seo_args = ["-u", url]
     if export != "none":
         seo_args += ["--export", export]
@@ -612,9 +693,7 @@ def cmd_scan(args):
         "score": seo_score,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [2/17] Running Security Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[2/17] {C['gold']}Running Security Analysis...{C['reset']}")
     sec_args = ["-u", url]
     if export != "none":
         sec_args += ["--export", export]
@@ -634,9 +713,7 @@ def cmd_scan(args):
         "grade": sec_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [3/17] Running Performance Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[3/17] {C['gold']}Running Performance Analysis...{C['reset']}")
     perf_args = ["-u", url]
     if export != "none":
         perf_args += ["--export", export]
@@ -656,9 +733,7 @@ def cmd_scan(args):
         "grade": perf_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [4/17] Running Uptime Check...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[4/17] {C['gold']}Running Uptime Check...{C['reset']}")
     uptime_args = ["-u", url]
     if export != "none":
         uptime_args += ["--export", export]
@@ -678,9 +753,7 @@ def cmd_scan(args):
         "verdict": uptime_verdict,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [5/17] Running Mobile Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[5/17] {C['gold']}Running Mobile Analysis...{C['reset']}")
     mobile_args = ["-u", url]
     if export != "none":
         mobile_args += ["--export", export]
@@ -702,9 +775,7 @@ def cmd_scan(args):
         "verdict": mobile_verdict,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [6/17] Running Content Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[6/17] {C['gold']}Running Content Analysis...{C['reset']}")
     content_args = ["-u", url]
     if export != "none":
         content_args += ["--export", export]
@@ -724,9 +795,7 @@ def cmd_scan(args):
         "grade": content_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [7/17] Running Network Diagnostics...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[7/17] {C['gold']}Running Network Diagnostics...{C['reset']}")
     network_args = ["-u", url]
     if export != "none":
         network_args += ["--export", export]
@@ -746,9 +815,7 @@ def cmd_scan(args):
         "grade": network_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [8/17] Running Accessibility Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[8/17] {C['gold']}Running Accessibility Analysis...{C['reset']}")
     access_args = ["-u", url]
     if export != "none":
         access_args += ["--export", export]
@@ -770,9 +837,7 @@ def cmd_scan(args):
         "wcag_level": wcag_level,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [9/17] Running Image Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[9/17] {C['gold']}Running Image Analysis...{C['reset']}")
     image_args = ["-u", url]
     if export != "none":
         image_args += ["--export", export]
@@ -792,9 +857,7 @@ def cmd_scan(args):
         "grade": image_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [10/17] Running API Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[10/17] {C['gold']}Running API Analysis...{C['reset']}")
     api_args = ["-u", url]
     if export != "none":
         api_args += ["--export", export]
@@ -814,9 +877,7 @@ def cmd_scan(args):
         "grade": api_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [11/17] Running Video Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[11/17] {C['gold']}Running Video Analysis...{C['reset']}")
     video_args = ["-u", url]
     if export != "none":
         video_args += ["--export", export]
@@ -836,9 +897,7 @@ def cmd_scan(args):
         "grade": video_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [12/17] Running Schema Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[12/17] {C['gold']}Running Schema Analysis...{C['reset']}")
     schema_args = ["-u", url]
     if export != "none":
         schema_args += ["--export", export]
@@ -858,9 +917,7 @@ def cmd_scan(args):
         "grade": schema_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [13/17] Running Email Deliverability...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[13/17] {C['gold']}Running Email Deliverability...{C['reset']}")
     email_args = ["-u", url]
     if export != "none":
         email_args += ["--export", export]
@@ -880,9 +937,7 @@ def cmd_scan(args):
         "grade": email_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [14/17] Running Sitemap & Crawlability...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[14/17] {C['gold']}Running Sitemap & Crawlability...{C['reset']}")
     sitemap_args = ["-u", url]
     if export != "none":
         sitemap_args += ["--export", export]
@@ -902,9 +957,7 @@ def cmd_scan(args):
         "grade": sitemap_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [15/17] Running HTML Validation...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[15/17] {C['gold']}Running HTML Validation...{C['reset']}")
     html_args = ["-u", url]
     if export != "none":
         html_args += ["--export", export]
@@ -924,9 +977,7 @@ def cmd_scan(args):
         "grade": html_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [16/17] Running CDN Analysis...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[16/17] {C['gold']}Running CDN Analysis...{C['reset']}")
     cdn_args = ["-u", url]
     if export != "none":
         cdn_args += ["--export", export]
@@ -946,9 +997,7 @@ def cmd_scan(args):
         "grade": cdn_grade,
     }
 
-    print(f"\n{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}  [17/17] Running Cookie Privacy...{Style.RESET_ALL}")
-    print(f"{Fore.YELLOW}{Style.BRIGHT}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"\n{C['brand']}[17/17] {C['gold']}Running Cookie Privacy...{C['reset']}")
     cookies_args = ["-u", url]
     if export != "none":
         cookies_args += ["--export", export]
@@ -968,12 +1017,12 @@ def cmd_scan(args):
         "grade": cookies_grade,
     }
 
-    print(f"{Fore.CYAN}{Style.BRIGHT}{'='*70}{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{Style.BRIGHT}  COMBINED SCAN RESULTS{Style.RESET_ALL}")
-    print(f"{Fore.CYAN}{Style.BRIGHT}{'='*70}{Style.RESET_ALL}")
-    print(f"  {Fore.WHITE}Target:{Style.RESET_ALL}   {url}")
-    print(f"  {Fore.WHITE}Time:{Style.RESET_ALL}     {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"{Fore.CYAN}{'─'*70}{Style.RESET_ALL}\n")
+    print(f"{C['brand']}{Style.BRIGHT}{'═' * 70}{C['reset']}")
+    print(f"{C['brand']}{Style.BRIGHT}  COMBINED SCAN RESULTS{C['reset']}")
+    print(f"{C['brand']}{Style.BRIGHT}{'═' * 70}{C['reset']}")
+    print(f"  {C['desc']}Target:{C['reset']}   {_dim(url)}")
+    print(f"  {C['desc']}Time:{C['reset']}     {_dim(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}")
+    print(f"{C['rule']}{Style.DIM}{'─' * 70}{C['reset']}\n")
 
     print(f"  {Fore.GREEN}{Style.BRIGHT}SEO Analysis{Style.RESET_ALL}")
     if seo_score:
@@ -1208,53 +1257,9 @@ def cmd_scan(args):
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="cstools",
-        description="CSTools - Unified Security & Analysis CLI",
+        description=f"{APP_NAME} — unified website measurement & analysis CLI ({APP_VERSION})",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"""{Fore.CYAN}Commands:{Style.RESET_ALL}
-  {Fore.GREEN}loadstorm{Style.RESET_ALL}  Run load/stress testing
-  {Fore.GREEN}seo{Style.RESET_ALL}        Run SEO analysis
-  {Fore.GREEN}security{Style.RESET_ALL}   Run security analysis
-  {Fore.GREEN}perf{Style.RESET_ALL}       Run performance analysis
-  {Fore.GREEN}uptime{Style.RESET_ALL}     Run uptime check
-  {Fore.GREEN}mobile{Style.RESET_ALL}     Run mobile analysis
-  {Fore.GREEN}content{Style.RESET_ALL}    Run content analysis
-  {Fore.GREEN}network{Style.RESET_ALL}    Run network diagnostics
-  {Fore.GREEN}access{Style.RESET_ALL}     Run accessibility analysis
-  {Fore.GREEN}image{Style.RESET_ALL}      Run image analysis
-  {Fore.GREEN}api{Style.RESET_ALL}        Run API analysis
-  {Fore.GREEN}video{Style.RESET_ALL}      Run video analysis
-  {Fore.GREEN}schema{Style.RESET_ALL}     Run structured data analysis
-  {Fore.GREEN}email{Style.RESET_ALL}      Run email deliverability analysis
-  {Fore.GREEN}sitemap{Style.RESET_ALL}    Run sitemap & crawlability analysis
-  {Fore.GREEN}html{Style.RESET_ALL}       Run HTML validation
-  {Fore.GREEN}cdn{Style.RESET_ALL}        Run CDN analysis
-  {Fore.GREEN}cookies{Style.RESET_ALL}    Run cookie privacy analysis
-  {Fore.GREEN}scan{Style.RESET_ALL}       Run ALL tools on a URL
-  {Fore.GREEN}list{Style.RESET_ALL}       List available tools
-
-{Fore.CYAN}Examples:{Style.RESET_ALL}
-  python cstools.py loadstorm -u https://target.com -c 100
-  python cstools.py seo -u https://example.com --export all
-  python cstools.py security -u https://target.com
-  python cstools.py perf -u https://example.com -v
-  python cstools.py uptime -u https://example.com -c 10
-  python cstools.py mobile -u https://example.com
-  python cstools.py content -u https://example.com
-  python cstools.py network -u https://example.com
-  python cstools.py access -u https://example.com --level AA
-  python cstools.py image -u https://example.com
-  python cstools.py api -u https://api.example.com --auth-type bearer --api-key KEY
-  python cstools.py video -u https://example.com
-  python cstools.py schema -u https://example.com
-  python cstools.py email -u example.com
-  python cstools.py sitemap -u https://example.com
-  python cstools.py html -u https://example.com
-  python cstools.py cdn -u https://example.com
-  python cstools.py cookies -u https://example.com
-  python cstools.py upgrade -u https://example.com --export all
-  python cstools.py scan -u https://target.com --export all
-  python cstools.py list
-"""
+        epilog=EPILOG,
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")

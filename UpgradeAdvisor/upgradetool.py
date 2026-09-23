@@ -2,7 +2,7 @@
 """
 UpgradeAdvisor v1.0 — What to upgrade on your website for a better rating.
 
-Runs the CS Tools suite, aggregates every tool's score into one overall
+Runs the CS-Tool suite, aggregates every tool's score into one overall
 site rating, then produces a prioritized upgrade roadmap: what to fix,
 in what order, how much rating each fix is worth, and how hard it is.
 """
@@ -425,7 +425,7 @@ th{{background:#161b22;color:#79c0ff}}
 def build_parser():
     p = argparse.ArgumentParser(
         prog="upgrade",
-        description="Aggregate all CS Tools scores and print a prioritized upgrade roadmap.",
+        description="Aggregate all CS-Tool scores and print a prioritized upgrade roadmap.",
     )
     p.add_argument("-u", "--url", required=True, help="Target URL")
     p.add_argument("-t", "--timeout", type=int, default=60, help="Per-tool timeout (default 60)")
@@ -445,7 +445,7 @@ def main():
 
     import time
     t0 = time.time()
-    print(f"{Fore.CYAN}{Style.BRIGHT} {VERSION} — collecting scores from CS Tools…{Style.RESET_ALL}")
+    print(f"{Fore.CYAN}{Style.BRIGHT} {VERSION} — collecting scores from CS-Tool…{Style.RESET_ALL}")
     print(f"{Fore.CYAN} Target: {url}{Style.RESET_ALL}\n")
 
     selected = [t for t in TOOLS if not args.only or t[1] in args.only]

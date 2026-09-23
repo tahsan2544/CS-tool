@@ -32,7 +32,7 @@ paste output here
 
 - OS: [e.g. Ubuntu 22.04, macOS 14, Windows 11]
 - Python version: [e.g. 3.11.6]
-- CS Tools version / commit: [e.g. 112867f]
+- CS-Tool version / commit: [e.g. 112867f]
 
 ## Additional context
 

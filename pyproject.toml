@@ -3,9 +3,9 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cs-tools"
-version = "1.1.0"
-description = "CS Tools - Comprehensive Website Measurement & Analysis Toolkit (19 tools)"
+name = "cs-tool"
+version = "1.2.0"
+description = "CS-Tool - Comprehensive Website Measurement & Analysis Toolkit (19 tools)"
 readme = "README.md"
 requires-python = ">=3.7"
 license = { text = "MIT" }

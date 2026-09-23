@@ -1,7 +1,20 @@
 # Changelog
 
-All notable changes to CS Tools are documented here.
+All notable changes to CS-Tool are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/) where practical; individual tools keep their own `VERSION` strings.
+
+## [1.2.0] — CS-Tool rebrand + CLI UI refresh
+
+### Changed
+- Project display name **CS Tools → CS-Tool** (`APP_NAME`, packaging descriptions, README title)
+- New multi-color banner (brand box art, grouped command sections)
+- Palette + helpers for consistent CLI chrome (`C`, `_rule`, `_tag`, `_cmd`, `_dim`)
+- `list` command grouped by meta/core/content/platform with aligned tool columns
+- `--help` epilog: examples + command groups + docs links
+- Scan headers and combined-results frame restyled
+
+### Bumped
+- Package version `1.1.0` → `1.2.0` (setup.py, pyproject.toml)
 
 ## [1.1.0] — tool upgrades + professional repo
 
@@ -36,7 +49,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [S
 ## [1.0.0] — initial public release
 
 ### Added
-- Unified CLI `cstools.py` with 18 analysis tools
+- Unified CLI `cstools.py` with 18 analysis tools (originally released as CS Tools)
 - LoadStorm, SEOChecker, SecurityChecker, PerfAnalyzer, UptimeChecker
 - MobileAnalyzer, ContentAnalyzer, NetworkAnalyzer, AccessibilityAnalyzer
 - ImageAnalyzer, APIAnalyzer, VideoAnalyzer, SchemaAnalyzer

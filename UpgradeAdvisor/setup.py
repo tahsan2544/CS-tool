@@ -7,7 +7,7 @@ with open(os.path.join(os.path.dirname(__file__), "requirements.txt"), encoding=
 setup(
     name="upgrade-advisor",
     version="1.0.0",
-    description="Aggregate CS Tools scores into a prioritized website upgrade roadmap",
+    description="Aggregate CS-Tool scores into a prioritized website upgrade roadmap",
     author="tahsan2544",
     license="MIT",
     py_modules=["upgradetool"],
