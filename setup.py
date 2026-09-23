@@ -1,0 +1,47 @@
+from setuptools import setup, find_packages
+
+setup(
+    name='cs-tools',
+    version='1.0.0',
+    description='CS Tools - Comprehensive Website Measurement & Analysis Toolkit',
+    long_description=open('README.md', encoding='utf-8').read(),
+    long_description_content_type='text/markdown',
+    author='tahsan2544',
+    author_email='tahsan2544@gmail.com',
+    url='https://github.com/tahsan2544/CS-Tools',
+    license='MIT',
+    python_requires='>=3.7',
+    install_requires=[
+        'requests>=2.31.0',
+        'beautifulsoup4>=4.12.0',
+        'colorama>=0.4.6',
+        'aiohttp>=3.9.0',
+        'websockets>=12.0',
+        'dnspython>=2.4.0',
+    ],
+    entry_points={
+        'console_scripts': [
+            'cstools=cstools:main',
+        ],
+    },
+    classifiers=[
+        'Development Status :: 5 - Production/Stable',
+        'Intended Audience :: Developers',
+        'Intended Audience :: System Administrators',
+        'Intended Audience :: Information Technology',
+        'License :: OSI Approved :: MIT License',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Topic :: Internet :: WWW/HTTP',
+        'Topic :: Internet :: WWW/HTTP :: Site Management',
+        'Topic :: Internet :: WWW/HTTP :: Indexing/search',
+        'Topic :: System :: Monitoring',
+        'Topic :: Security',
+    ],
+    keywords='seo, security, performance, uptime, accessibility, web-analysis, load-testing, monitoring',
+)

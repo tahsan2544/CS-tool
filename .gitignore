@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+*.manifest
+*.spec
+
+# Virtual Environment
+venv/
+env/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test/Output files
+output/
+*.log
+*_report_*.json
+*_report_*.csv
+*_report_*.html
+dns_records.json
+
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+secrets.json
+credentials.json
