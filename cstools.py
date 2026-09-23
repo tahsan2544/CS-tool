@@ -76,12 +76,11 @@ def _cmd(text):
 BANNER = f"""{C['brand']}
     ╔══════════════════════════════════════════════════════════════════╗
     ║                                                                  ║
-    ║{C['accent']}   ██████╗██╗     ██╗   ██╗███████╗███████╗ ██╗     {C['brand']}              ║
-    ║{C['accent']}  ██╔════╝██║     ██║   ██║██╔════╝██╔════╝██║     {C['brand']}               ║
-    ║{C['accent']}  ██║     ██║     ██║   ██║█████╗  █████╗  ██║     {C['brand']}               ║
-    ║{C['accent']}  ██║     ██║     ██║   ██║██╔══╝  ██╔══╝  ██║     {C['brand']}               ║
-    ║{C['accent']}  ╚██████╗███████╗╚██████╔╝███████╗███████╗███████╗ {C['brand']}              ║
-    ║{C['accent']}   ╚═════╝╚══════╝ ╚═════╝ ╚══════╝╚══════╝╚══════╝{C['brand']}               ║
+    ║{C['accent']}    ____ ____      _____           _{C['brand']}                              ║
+    ║{C['accent']}   / ___/ ___|    |_   _|__   ___ | |{C['brand']}                             ║
+    ║{C['accent']}  | |   \\___ \\ _____| |/ _ \\ / _ \\| |{C['brand']}                             ║
+    ║{C['accent']}  | |___ ___) |_____| | (_) | (_) | |{C['brand']}                             ║
+    ║{C['accent']}   \\____|____/      |_|\\___/ \\___/|_|{C['brand']}                             ║
     ║                                                                  ║
     ║{C['gold']}  CS-Tool{C['brand']}  ·  {C['desc']}Website Measurement Suite{C['brand']}  ·  {C['gold']}v{APP_VERSION}{C['brand']}                ║
     ║{C['dim']}  19 tools · one CLI · measure → audit → upgrade{C['brand']}                  ║
@@ -652,9 +651,19 @@ def cmd_list(args):
     return 0
 
 
-def extract_score_from_output(output, pattern):
-    match = re.search(pattern, output, re.IGNORECASE)
-    if match:
+def extract_score_from_output(pattern, output):
+    """Return the first capture group from output, or None.
+
+    Call sites pass (regex_pattern, text). Invalid patterns or empty
+    text must never raise — scan continues without a score.
+    """
+    if not pattern or not output:
+        return None
+    try:
+        match = re.search(pattern, output, re.IGNORECASE)
+    except re.error:
+        return None
+    if match and match.groups():
         return match.group(1)
     return None
 
@@ -705,7 +714,7 @@ def cmd_scan(args):
     )
     sec_output = sec_result.stdout
     sec_score = extract_score_from_output(r'Score:\s*(\d+)/100', sec_output)
-    sec_grade = extract_score_from_output(r'Grade:\s*(\w)', sec_output)
+    sec_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', sec_output)
     results["security"] = {
         "output": sec_output,
         "returncode": sec_result.returncode,
@@ -725,7 +734,7 @@ def cmd_scan(args):
     )
     perf_output = perf_result.stdout
     perf_score = extract_score_from_output(r'Score:\s*(\d+)/100', perf_output)
-    perf_grade = extract_score_from_output(r'Grade:\s*(\w)', perf_output)
+    perf_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', perf_output)
     results["perf"] = {
         "output": perf_output,
         "returncode": perf_result.returncode,
@@ -765,7 +774,7 @@ def cmd_scan(args):
     )
     mobile_output = mobile_result.stdout
     mobile_score = extract_score_from_output(r'Score:\s*(\d+)/100', mobile_output)
-    mobile_grade = extract_score_from_output(r'Grade:\s*(\w)', mobile_output)
+    mobile_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', mobile_output)
     mobile_verdict = extract_score_from_output(r'Mobile.Friendly:\s*(\w+)', mobile_output)
     results["mobile"] = {
         "output": mobile_output,
@@ -787,7 +796,7 @@ def cmd_scan(args):
     )
     content_output = content_result.stdout
     content_score = extract_score_from_output(r'Score:\s*(\d+)/100', content_output)
-    content_grade = extract_score_from_output(r'Grade:\s*(\w)', content_output)
+    content_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', content_output)
     results["content"] = {
         "output": content_output,
         "returncode": content_result.returncode,
@@ -807,7 +816,7 @@ def cmd_scan(args):
     )
     network_output = network_result.stdout
     network_score = extract_score_from_output(r'Score:\s*(\d+)/100', network_output)
-    network_grade = extract_score_from_output(r'Grade:\s*(\w)', network_output)
+    network_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', network_output)
     results["network"] = {
         "output": network_output,
         "returncode": network_result.returncode,
@@ -827,7 +836,7 @@ def cmd_scan(args):
     )
     access_output = access_result.stdout
     access_score = extract_score_from_output(r'Score:\s*(\d+)/100', access_output)
-    access_grade = extract_score_from_output(r'Grade:\s*(\w+)', access_output)
+    access_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', access_output)
     wcag_level = extract_score_from_output(r'WCAG\s+Level:\s*(\w+)', access_output)
     results["access"] = {
         "output": access_output,
@@ -849,7 +858,7 @@ def cmd_scan(args):
     )
     image_output = image_result.stdout
     image_score = extract_score_from_output(r'Score:\s*(\d+)/100', image_output)
-    image_grade = extract_score_from_output(r'Grade:\s*(\w+)', image_output)
+    image_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', image_output)
     results["image"] = {
         "output": image_output,
         "returncode": image_result.returncode,
@@ -869,7 +878,7 @@ def cmd_scan(args):
     )
     api_output = api_result.stdout
     api_score = extract_score_from_output(r'Score:\s*(\d+)/100', api_output)
-    api_grade = extract_score_from_output(r'Grade:\s*(\w+)', api_output)
+    api_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', api_output)
     results["api"] = {
         "output": api_output,
         "returncode": api_result.returncode,
@@ -889,7 +898,7 @@ def cmd_scan(args):
     )
     video_output = video_result.stdout
     video_score = extract_score_from_output(r'Score:\s*(\d+)/100', video_output)
-    video_grade = extract_score_from_output(r'Grade:\s*(\w+)', video_output)
+    video_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', video_output)
     results["video"] = {
         "output": video_output,
         "returncode": video_result.returncode,
@@ -909,7 +918,7 @@ def cmd_scan(args):
     )
     schema_output = schema_result.stdout
     schema_score = extract_score_from_output(r'Score:\s*(\d+)/100', schema_output)
-    schema_grade = extract_score_from_output(r'Grade:\s*(\w+)', schema_output)
+    schema_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', schema_output)
     results["schema"] = {
         "output": schema_output,
         "returncode": schema_result.returncode,
@@ -929,7 +938,7 @@ def cmd_scan(args):
     )
     email_output = email_result.stdout
     email_score = extract_score_from_output(r'Score:\s*(\d+)/100', email_output)
-    email_grade = extract_score_from_output(r'Grade:\s*(\w+)', email_output)
+    email_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', email_output)
     results["email"] = {
         "output": email_output,
         "returncode": email_result.returncode,
@@ -949,7 +958,7 @@ def cmd_scan(args):
     )
     sitemap_output = sitemap_result.stdout
     sitemap_score = extract_score_from_output(r'Score:\s*(\d+)/100', sitemap_output)
-    sitemap_grade = extract_score_from_output(r'Grade:\s*(\w+)', sitemap_output)
+    sitemap_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', sitemap_output)
     results["sitemap"] = {
         "output": sitemap_output,
         "returncode": sitemap_result.returncode,
@@ -969,7 +978,7 @@ def cmd_scan(args):
     )
     html_output = html_result.stdout
     html_score = extract_score_from_output(r'TOTAL\s+█+\s*(\d+)/100', html_output) or extract_score_from_output(r'(\d+)/100', html_output)
-    html_grade = extract_score_from_output(r'GRADE:\s*(\w+)', html_output)
+    html_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', html_output)
     results["html"] = {
         "output": html_output,
         "returncode": html_result.returncode,
@@ -989,7 +998,7 @@ def cmd_scan(args):
     )
     cdn_output = cdn_result.stdout
     cdn_score = extract_score_from_output(r'TOTAL:\s*(\d+(?:\.\d+)?)/100', cdn_output) or extract_score_from_output(r'(\d+)/100', cdn_output)
-    cdn_grade = extract_score_from_output(r'GRADE:\s*(\w+)', cdn_output)
+    cdn_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', cdn_output)
     results["cdn"] = {
         "output": cdn_output,
         "returncode": cdn_result.returncode,
@@ -1009,7 +1018,7 @@ def cmd_scan(args):
     )
     cookies_output = cookies_result.stdout
     cookies_score = extract_score_from_output(r'Total Score:\s*(\d+)/100', cookies_output) or extract_score_from_output(r'(\d+)/100', cookies_output)
-    cookies_grade = extract_score_from_output(r'Grade:\s*(\w+)', cookies_output)
+    cookies_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', cookies_output)
     results["cookies"] = {
         "output": cookies_output,
         "returncode": cookies_result.returncode,
