@@ -18,7 +18,7 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "requests"])
     import requests
 
-VERSION = "1.0"
+VERSION = "2.0"
 TOTAL_POINTS = 100
 
 CDN_SIGNATURES = {
@@ -394,13 +394,14 @@ def run_checks(url, timeout, verbose, c):
                 "Origin Shield",
                 "Purge & Invalidation",
                 "Asset Delivery",
+                "Cache Intelligence",
             ]
         ):
             results.append(
                 {
                     "category": cat,
                     "score": 0,
-                    "max": [20, 15, 10, 15, 10, 5, 10, 5, 5, 5][i],
+                    "max": [15, 12, 8, 15, 10, 5, 10, 5, 5, 5, 10][i],
                     "findings": [f"Request failed: {err}"],
                 }
             )
@@ -536,8 +537,8 @@ def run_checks(url, timeout, verbose, c):
         findings.append(f"Via: {via}")
     if server:
         findings.append(f"Server: {server}")
-    score = min(score, 20)
-    results.append({"category": "CDN Detection", "score": score, "max": 20, "findings": findings})
+    score = min(score, 15)
+    results.append({"category": "CDN Detection", "score": score, "max": 15, "findings": findings})
     details["provider"] = provider
 
     # 2 Cache Config max 15
@@ -596,8 +597,8 @@ def run_checks(url, timeout, verbose, c):
             score += 1
     if not etag and not last_mod and not cc:
         findings.append("No validators or cache directives found")
-    score = max(0, min(score, 15))
-    results.append({"category": "Cache Config", "score": score, "max": 15, "findings": findings})
+    score = max(0, min(score, 12))
+    results.append({"category": "Cache Config", "score": score, "max": 12, "findings": findings})
 
     # 3 Cache Status max 10
     score = 0
@@ -649,8 +650,8 @@ def run_checks(url, timeout, verbose, c):
         findings.append(f"X-Cache: {x_cache_status}")
     if cache_status:
         findings.append(f"Cache-Status: {cache_status}")
-    score = max(0, min(score, 10))
-    results.append({"category": "Cache Status", "score": score, "max": 10, "findings": findings})
+    score = max(0, min(score, 8))
+    results.append({"category": "Cache Status", "score": score, "max": 8, "findings": findings})
 
     # 4 Edge Performance max 15
     score = 0
@@ -707,6 +708,15 @@ def run_checks(url, timeout, verbose, c):
     if regional:
         score += 2
         findings.append(f"Regional markers: {'; '.join(regional)}")
+    server_timing = hdrs.get("server-timing")
+    trace_headers = [k for k in ("traceparent", "x-trace-id", "x-correlation-id", "x-request-id", "x-amzn-trace-id") if k in hdrs]
+    if server_timing:
+        score += 1
+        findings.append(f"Server-Timing trace: {server_timing[:80]}")
+    if trace_headers:
+        findings.append(f"Request trace headers: {', '.join(trace_headers)}")
+    if not regional and not server_timing and not trace_headers:
+        findings.append("No multi-region/edge trace headers (CF-Ray, X-Served-By, Server-Timing)")
     reuse = hdrs.get("connection") or ""
     keep_alive = hdrs.get("keep-alive")
     if "keep-alive" in reuse.lower() or keep_alive:
@@ -753,6 +763,8 @@ def run_checks(url, timeout, verbose, c):
         else:
             score += 2
             findings.append(f"Compressible type compressed: {accept_enc}")
+            if "gzip" in cel and "br" not in cel.split(","):
+                findings.append("Text asset on gzip; Brotli (br) would give better ratio")
     score = max(0, min(score, 10))
     results.append({"category": "Compression", "score": score, "max": 10, "findings": findings})
 
@@ -968,6 +980,69 @@ def run_checks(url, timeout, verbose, c):
             findings.append("Cacheable page/delivery headers present")
     score = max(0, min(score, 5))
     results.append({"category": "Asset Delivery", "score": score, "max": 5, "findings": findings})
+
+    # 11 Cache Intelligence max 10
+    score = 0
+    findings = []
+    ccl = (cc or "").lower()
+    is_static = is_asset_path or any(x in ctype for x in ("image", "font", "javascript", "stylesheet", "css"))
+    if cc:
+        if "s-maxage=" in ccl:
+            score += 2
+            findings.append("Deep parse: s-maxage sets shared/CDN cache TTL")
+        else:
+            findings.append("Deep parse: no s-maxage (shared-cache TTL inherits max-age)")
+        if "stale-while-revalidate=" in ccl:
+            score += 2
+            findings.append("Deep parse: stale-while-revalidate enables grace revalidation")
+        if "immutable" in ccl:
+            if is_static:
+                score += 2
+                findings.append("immutable on static asset - fingerprint-friendly edge caching")
+            else:
+                score += 1
+                findings.append("immutable present (best reserved for fingerprinted static assets)")
+    else:
+        findings.append("No Cache-Control header for deep directive parse")
+    if age:
+        try:
+            age_n = int(age)
+            if is_static:
+                score += 1
+                findings.append(f"Age: {age_n}s on static response (edge cache HIT evidence)")
+            else:
+                findings.append(f"Age: {age_n}s present on response")
+        except Exception:
+            findings.append(f"Age: {age}")
+    elif is_static:
+        findings.append("No Age header on static response (MISS, bypass, or no edge cache)")
+    if etag or last_mod:
+        score += 1
+        if etag and last_mod:
+            findings.append("Validators: both ETag and Last-Modified present")
+        elif etag:
+            findings.append("Validators: ETag only (Last-Modified absent)")
+        else:
+            findings.append("Validators: Last-Modified only (ETag absent)")
+    else:
+        findings.append("Validators: neither ETag nor Last-Modified")
+    vary_fields = [v.strip() for v in (vary or "").split(",") if v.strip()]
+    vary_lower = [v.lower() for v in vary_fields]
+    if ce:
+        if "accept-encoding" in vary_lower:
+            score += 1
+            findings.append("Vary includes Accept-Encoding for compressed response")
+        else:
+            findings.append("Vary: Accept-Encoding missing on compressed response (cache poisoning risk)")
+    if len(vary_fields) > 3:
+        findings.append(f"Over-Vary: {len(vary_fields)} fields ({', '.join(vary_fields[:5])}) may fragment edge cache")
+    elif vary_fields:
+        score += 1
+        findings.append(f"Vary fields reasonable: {', '.join(vary_fields[:5])}")
+    else:
+        findings.append("No Vary header")
+    score = max(0, min(score, 10))
+    results.append({"category": "Cache Intelligence", "score": score, "max": 10, "findings": findings})
 
     return results, details
 

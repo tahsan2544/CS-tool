@@ -25,8 +25,8 @@ except ImportError:
     os.system(f"{sys.executable} -m pip install beautifulsoup4 -q")
     from bs4 import BeautifulSoup
 
-VERSION = "1.0"
-USER_AGENT = "SitemapAnalyzer/1.0"
+VERSION = "2.0"
+USER_AGENT = "SitemapAnalyzer/2.0"
 SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 MAX_CHILD_SITEMAPS = 5
 ROBOTS_DIRECTIVES = {
@@ -231,6 +231,10 @@ class SitemapAnalyzer:
         self.sitemap_entries = []
         self.child_sitemap_urls = []
         self.child_sitemap_count = 0
+        self.sitemap_has_news = False
+        self.sitemap_image_tags = 0
+        self.sitemap_video_tags = 0
+        self.sitemap_hreflang_count = 0
         self.page_resp = None
         self.soup = None
         self.page_html = ""
@@ -346,8 +350,32 @@ class SitemapAnalyzer:
                 self.collect_child_sitemaps(root)
             else:
                 self.sitemap_entries = self.extract_entries(root, kind="url")
+            self.collect_sitemap_extras(root)
             return
         self.log("no parseable sitemap found")
+
+    def collect_sitemap_extras(self, root):
+        for el in root.iter():
+            tag = el.tag if isinstance(el.tag, str) else ""
+            lowered = tag.lower()
+            local = local_tag(tag).lower()
+            if "news" in lowered:
+                self.sitemap_has_news = True
+            if local == "image" or "sitemap-image" in lowered or "image:loc" in lowered:
+                self.sitemap_image_tags += 1
+            if local == "video" or "sitemap-video" in lowered or "video:loc" in lowered:
+                self.sitemap_video_tags += 1
+            if local == "link" and el.get("hreflang"):
+                self.sitemap_hreflang_count += 1
+        if not self.sitemap_has_news:
+            for el in root.iter():
+                for value in el.attrib.values():
+                    if isinstance(value, str) and "news" in value.lower():
+                        self.sitemap_has_news = True
+                        break
+                if self.sitemap_has_news:
+                    break
+        self.log(f"extras: news={self.sitemap_has_news} image={self.sitemap_image_tags} video={self.sitemap_video_tags} hreflang={self.sitemap_hreflang_count}")
 
     def collect_child_sitemaps(self, root):
         locations = []
@@ -550,6 +578,9 @@ class SitemapAnalyzer:
             cat.add("Changefreq values", "fail", "No changefreq data available")
             cat.add("Priority values", "fail", "No priority data available")
             cat.add("URL structure analysis", "fail", "No URLs available for structure analysis")
+            cat.add("Lastmod freshness (90 days)", "fail", "No lastmod data available")
+            cat.add("Image/video tags in sitemap", "fail", "No sitemap URLs to inspect")
+            cat.add("hreflang alternates in sitemap", "fail", "No sitemap URLs to inspect")
             return cat.finalize()
         count = len(entries)
         if count >= 10:
@@ -618,6 +649,53 @@ class SitemapAnalyzer:
             cat.add("URL structure analysis", "warn", f"{absolute} valid absolute, {malformed} malformed")
         else:
             cat.add("URL structure analysis", "fail", "No well-formed absolute URLs in sitemap")
+        fresh = 0
+        parseable = 0
+        cutoff = time.time() - 90 * 86400
+        for entry in lastmods:
+            raw = (entry.get("lastmod") or "").strip()
+            try:
+                dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+                if dt.tzinfo is not None:
+                    ts = dt.timestamp()
+                else:
+                    ts = (dt - datetime(1970, 1, 1)).total_seconds()
+                parseable += 1
+                if ts >= cutoff:
+                    fresh += 1
+            except (ValueError, TypeError):
+                continue
+        if parseable:
+            fresh_pct = fresh / parseable * 100
+            if fresh_pct >= 50:
+                cat.add("Lastmod freshness (90 days)", "pass",
+                        f"{fresh}/{parseable} lastmod values within last 90 days ({fresh_pct:.0f}%)")
+            elif fresh > 0:
+                cat.add("Lastmod freshness (90 days)", "warn",
+                        f"only {fresh}/{parseable} lastmod values within last 90 days ({fresh_pct:.0f}%)")
+            else:
+                cat.add("Lastmod freshness (90 days)", "fail",
+                        f"0/{parseable} lastmod values within last 90 days")
+        else:
+            cat.add("Lastmod freshness (90 days)", "fail", "No parseable lastmod dates to check")
+        if self.sitemap_image_tags or self.sitemap_video_tags:
+            media = []
+            if self.sitemap_image_tags:
+                media.append(f"{self.sitemap_image_tags} image tag(s)")
+            if self.sitemap_video_tags:
+                media.append(f"{self.sitemap_video_tags} video tag(s)")
+            cat.add("Image/video tags in sitemap", "pass", ", ".join(media))
+        elif entries:
+            cat.add("Image/video tags in sitemap", "warn", "No image:/video: extension tags found")
+        else:
+            cat.add("Image/video tags in sitemap", "fail", "No sitemap URLs to inspect")
+        if self.sitemap_hreflang_count:
+            cat.add("hreflang alternates in sitemap", "pass",
+                    f"{self.sitemap_hreflang_count} xhtml:link hreflang alternate(s)")
+        elif entries:
+            cat.add("hreflang alternates in sitemap", "warn", "No hreflang alternates declared in sitemap")
+        else:
+            cat.add("hreflang alternates in sitemap", "fail", "No sitemap URLs to inspect")
         return cat.finalize()
 
     def check_sitemap_validity(self):
@@ -625,6 +703,7 @@ class SitemapAnalyzer:
         if self.sitemap_root is None:
             cat.add("XML validity", "fail", "No sitemap XML document retrieved")
             cat.add("Schema validation (sitemaps.org)", "fail", "No document to validate against sitemaps.org schema")
+            cat.add("News sitemap namespace", "fail", "No sitemap document to inspect for news namespace")
             cat.add("URL encoding", "fail", "No sitemap URLs available")
             cat.add("Duplicate URL detection", "fail", "No sitemap URLs available")
             return cat.finalize()
@@ -644,6 +723,12 @@ class SitemapAnalyzer:
             cat.add("Schema validation (sitemaps.org)", "warn", f"Root <{root_tag}> missing sitemaps.org namespace")
         else:
             cat.add("Schema validation (sitemaps.org)", "fail", f"Unexpected root element <{root_tag or 'unknown'}>")
+        if self.sitemap_has_news:
+            cat.add("News sitemap namespace", "pass", "news: namespace detected in sitemap")
+        elif root_tag in ("urlset", "sitemapindex"):
+            cat.add("News sitemap namespace", "warn", "No news: namespace found (optional Google News sitemap)")
+        else:
+            cat.add("News sitemap namespace", "fail", "No sitemap document to inspect for news namespace")
         locs = [e.get("loc") or "" for e in self.sitemap_entries]
         if self.sitemap_is_index:
             locs = locs + list(self.child_sitemap_urls)
@@ -1250,6 +1335,10 @@ class SitemapAnalyzer:
                 "children": self.child_sitemap_urls,
                 "entry_count": len(self.sitemap_entries),
                 "entries": self.sitemap_entries[:500],
+                "has_news_namespace": self.sitemap_has_news,
+                "image_tag_count": self.sitemap_image_tags,
+                "video_tag_count": self.sitemap_video_tags,
+                "hreflang_count": self.sitemap_hreflang_count,
             },
             "page": {
                 "meta_robots": self.meta_robots,

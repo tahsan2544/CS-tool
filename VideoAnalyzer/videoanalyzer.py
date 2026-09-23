@@ -25,8 +25,8 @@ except ImportError:
     from bs4 import BeautifulSoup
 
 
-VERSION = "2.0"
-MAX_TOTAL = 160
+VERSION = "3.0"
+MAX_TOTAL = 163
 
 GRADE_BANDS = [
     (95, "A+"),
@@ -61,6 +61,9 @@ ACTIONS = {
     "Video upload date": "Include uploadDate/datePublished in VideoObject schema or article:published_time meta.",
     "Video schema validation": "Complete the VideoObject schema with the recommended fields (contentUrl, embedUrl, etc.).",
     "Open Graph video tags": "Add og:video / og:video:secure_url / og:video:type meta tags for social and rich previews.",
+    "Twitter/X player card meta": "Add twitter:player (and twitter:player:stream) meta tags for Twitter/X video card previews.",
+    "VideoObject contentUrl/embedUrl": "Complete VideoObject schema with both contentUrl (direct media) and embedUrl (player page).",
+    "Hero preload=metadata or poster": "Set preload=metadata on <video> and/or a poster attribute so the player initializes cheaply.",
     "Video rich snippet readiness": "Combine duration, upload date, thumbnail, and embed URL so the video is eligible for rich results.",
     "Captions/subtitles detection": "Provide WebVTT captions via a track kind=captions element or your player's caption system.",
     "Audio description detection": "Offer audio descriptions (track kind=descriptions) for visually conveyed information.",
@@ -138,6 +141,9 @@ LOW_EFFORT_LABELS = {
     "Video resolution metadata",
     "Open Graph video tags",
     "Open Graph video metadata",
+    "Twitter/X player card meta",
+    "Hero preload=metadata or poster",
+    "VideoObject contentUrl/embedUrl",
     "Video rich snippet readiness",
     "Caption language attributes",
     "Player ARIA labelling",
@@ -391,6 +397,7 @@ class VideoAnalyzer:
                     self.inventory["captions"].append({"src": src, "kind": kind, "element": "track"})
             for source in v.find_all("source"):
                 src = source.get("src", "")
+                stype = (source.get("type") or "").lower()
                 if src:
                     self.inventory["sources"].append({
                         "src": src,
@@ -398,6 +405,10 @@ class VideoAnalyzer:
                         "label": source.get("data-label", source.get("label", "")),
                     })
                     self._note_format(src)
+                if "mpegurl" in stype and "hls" not in self.inventory["formats"]:
+                    self.inventory["formats"].append("hls")
+                if "dash+xml" in stype and "dash" not in self.inventory["formats"]:
+                    self.inventory["formats"].append("dash")
             src = v.get("src", "")
             if src:
                 self.inventory["sources"].append({"src": src, "type": "", "label": ""})
@@ -679,7 +690,7 @@ class VideoAnalyzer:
         return r
 
     def check_seo(self):
-        r = CheckResult("seo", "Video SEO", 18)
+        r = CheckResult("seo", "Video SEO", 19)
         vo = self._find_video_object()
         text_l = self.raw_html.lower()
 
@@ -770,6 +781,17 @@ class VideoAnalyzer:
               str(og_video)[:80] if og_ok else "no og:video tags")
         if og_ok:
             r.find(f"og:video: {str(og_video)[:80]}")
+
+        tw_player = (
+            self.meta.get("twitter:player")
+            or self.meta.get("twitter:player:stream")
+            or ""
+        )
+        tw_ok = bool(tw_player) or og_ok
+        r.add("Twitter/X player card meta", 1, 1, tw_ok,
+              str(tw_player)[:80] if tw_player else ("og:video fallback present" if og_ok else "no twitter:player or og:video"))
+        if tw_player:
+            r.find(f"twitter:player: {str(tw_player)[:80]}")
 
         rich_ready = has_vo and bool(duration) and bool(upload) and thumb_ok and len(present) >= 4
         r.add("Video rich snippet readiness", 1, 1, rich_ready,
@@ -961,7 +983,7 @@ class VideoAnalyzer:
         return r
 
     def check_performance(self):
-        r = CheckResult("performance", "Video Performance", 14)
+        r = CheckResult("performance", "Video Performance", 15)
         soup = self.soup
         text_l = self.raw_html.lower()
 
@@ -980,6 +1002,15 @@ class VideoAnalyzer:
             r.warn("preload=auto may cost bandwidth before playback")
         elif good_preload:
             r.find(f"preload={preload} (bandwidth-friendly)")
+
+        has_poster = False
+        if soup is not None:
+            has_poster = any(v.get("poster") for v in soup.find_all("video"))
+        hero_ready = preload == "metadata" or has_poster
+        r.add("Hero preload=metadata or poster", 1, 1, hero_ready,
+              f"preload={preload}, poster={'yes' if has_poster else 'no'}")
+        if hero_ready:
+            r.find("hero player initializes cheaply (preload=metadata and/or poster)")
 
         lazy = False
         if soup is not None:
@@ -1049,7 +1080,7 @@ class VideoAnalyzer:
         return r
 
     def check_metadata(self):
-        r = CheckResult("metadata", "Video Metadata", 14)
+        r = CheckResult("metadata", "Video Metadata", 15)
         soup = self.soup
         text_l = self.raw_html.lower()
 
@@ -1148,6 +1179,12 @@ class VideoAnalyzer:
               ", ".join(media_urls) if media_urls else "contentUrl/embedUrl not in schema")
         if media_urls:
             r.find(f"schema media: {', '.join(media_urls)}")
+
+        both_media = "contentUrl" in media_urls and "embedUrl" in media_urls
+        r.add("VideoObject contentUrl/embedUrl", 1, 1, both_media,
+              "both contentUrl and embedUrl present" if both_media else f"have: {', '.join(media_urls) or 'none'}; need both contentUrl and embedUrl")
+        if not both_media:
+            r.warn("VideoObject should include both contentUrl and embedUrl")
 
         r.clamp()
         return r
@@ -2434,7 +2471,7 @@ def main():
     parser = argparse.ArgumentParser(
         prog="VideoAnalyzer",
         description=(
-            "VideoAnalyzer v2.0 — analyzes video content for SEO, accessibility, embedding, "
+            f"VideoAnalyzer v{VERSION} — analyzes video content for SEO, accessibility, embedding, "
             "streaming (HLS/DASH), quality, compression, delivery, caching, and performance."
         ),
     )

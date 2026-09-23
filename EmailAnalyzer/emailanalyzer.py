@@ -42,7 +42,7 @@ if HAS_REQUESTS:
     import requests
 
 TOOL_NAME = "EmailAnalyzer"
-TOOL_VERSION = "1.0"
+TOOL_VERSION = "2.0"
 
 QTYPES = {
     "A": 1,
@@ -56,6 +56,7 @@ QTYPES = {
     "DNSKEY": 48,
     "RRSIG": 46,
     "CAA": 257,
+    "TLSA": 52,
 }
 
 COMMON_DKIM_SELECTORS = ["default", "google", "selector1", "selector2", "k1", "s1", "s2"]
@@ -1463,6 +1464,70 @@ EmailAnalyzer.check_mta_sts = check_mta_sts
 EmailAnalyzer.check_bimi = check_bimi
 
 
+def check_dane(self):
+    cat = self._new_cat("dane", "DANE TLSA", 5)
+    hosts = []
+    for _pref, host in self.mx_records:
+        if host and host not in hosts and not re.match(r"^\d+\.\d+\.\d+\.\d+$", host):
+            hosts.append(host)
+    if not hosts:
+        self._add(cat, "TLSA record existence", 0, 3, "no MX host to query",
+                  "Fix MX records before DANE checks")
+        self._add(cat, "DANE usage mode", 0, 1, "no MX host", "Fix MX records first")
+        self._add(cat, "TLSA selector/matching type", 0, 1, "no MX host", "Fix MX records first")
+        return cat
+
+    query_host = hosts[0]
+    name = "_25._tcp." + query_host
+    records = self.dns.query(name, "TLSA") or []
+    tlsa = []
+    for record in records:
+        parts = str(record).split()
+        if len(parts) >= 4 and parts[0].isdigit():
+            tlsa.append(parts)
+
+    if tlsa:
+        self._add(cat, "TLSA record existence", 3, 3,
+                  str(len(tlsa)) + " TLSA record(s) at " + name)
+    else:
+        self._add(cat, "TLSA record existence", 0, 3, "not found at " + name,
+                  "Publish DANE TLSA records for " + query_host +
+                  " (openssl s_client -showcerts | openssl x509 ... then dig TLSA)")
+
+    if not tlsa:
+        self._add(cat, "DANE usage mode", 0, 1, "no record",
+                  "Use usage=3 (DANE-EE) to bind the MX certificate via DNS")
+        self._add(cat, "TLSA selector/matching type", 0, 1, "no record",
+                  "Publish selector=1 matching=1 TLSA data")
+        return cat
+
+    usage = tlsa[0][0]
+    if usage == "3":
+        self._add(cat, "DANE usage mode", 1, 1, "usage=3 (DANE-EE)")
+    elif usage == "2":
+        self._add(cat, "DANE usage mode", 1, 1, "usage=2 (DANE-TA)",
+                  "Prefer usage=3 for end-entity MX certificates")
+    else:
+        self._add(cat, "DANE usage mode", 0, 1, "usage=" + usage + " (not recommended for SMTP)",
+                  "Prefer usage=3 (DANE-EE) for mail certificate association")
+
+    selector = tlsa[0][1]
+    matching = tlsa[0][2]
+    cert_hex = tlsa[0][3]
+    if selector in ("0", "1") and matching in ("0", "1", "2") and len(cert_hex) >= 32:
+        self._add(cat, "TLSA selector/matching type", 1, 1,
+                  "selector=" + selector + " matching=" + matching +
+                  " (" + str(len(cert_hex)) + " hex chars)")
+    else:
+        self._add(cat, "TLSA selector/matching type", 0, 1,
+                  "malformed: selector=" + selector + " matching=" + matching,
+                  "Use selector 0/1 and matching 0/1/2 with full certificate data")
+    return cat
+
+
+EmailAnalyzer.check_dane = check_dane
+
+
 def run_analysis(self):
     self.vlog("starting analysis for " + self.domain)
     steps = [
@@ -1476,6 +1541,7 @@ def run_analysis(self):
         ("headers", self.check_headers),
         ("mta_sts", self.check_mta_sts),
         ("bimi", self.check_bimi),
+        ("dane", self.check_dane),
     ]
     categories = []
     for cid, fn in steps:
@@ -1845,7 +1911,7 @@ def run_exports(results, export, pal):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         prog="emailanalyzer",
-        description="EmailAnalyzer v1.0 - email deliverability configuration analyzer",
+        description="EmailAnalyzer v2.0 - email deliverability configuration analyzer",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="examples:\n"
                "  python emailanalyzer.py -u example.com\n"

@@ -23,7 +23,7 @@ _ensure("beautifulsoup4", "bs4")
 import requests
 from bs4 import BeautifulSoup
 
-VERSION = "2.0"
+VERSION = "3.0"
 
 WEIGHTS = {
     "endpoints": 9,
@@ -143,7 +143,7 @@ def print_banner():
 
 class APIAnalyzer:
     COMMON_PATHS = ["/", "/api", "/api/", "/v1", "/v2", "/v3", "/graphql", "/gql", "/rest", "/api/v1", "/api/v2"]
-    SWAGGER_PATHS = ["/swagger", "/swagger/", "/swagger.json", "/openapi.json", "/api-docs", "/v2/api-docs", "/swagger-ui.html", "/swagger/index.html"]
+    SWAGGER_PATHS = ["/swagger", "/swagger/", "/swagger.json", "/openapi.json", "/api-docs", "/v2/api-docs", "/v3/api-docs", "/swagger-ui.html", "/swagger/index.html", "/swagger/v1/swagger.json"]
     DOC_PATHS = ["/docs", "/docs/", "/redoc", "/redoc/", "/api-docs", "/documentation", "/api/docs"]
     SECURITY_HEADERS = {
         "X-Content-Type-Options": "MIME sniffing protection",
@@ -165,7 +165,7 @@ class APIAnalyzer:
         self.verbose = verbose
         self.session = requests.Session()
         self.session.headers.update({
-            "User-Agent": "APIAnalyzer/2.0 (Quality, Security & Lifecycle Scanner)",
+            "User-Agent": "APIAnalyzer/3.0 (Quality, Security & Lifecycle Scanner)",
             "Accept": "application/json, */*",
         })
         if auth_type == "bearer" and api_key:
@@ -232,12 +232,15 @@ class APIAnalyzer:
         if found_paths:
             score += 5
         swagger_found = []
+        short_t = min(self.timeout, 5)
         for p in self.SWAGGER_PATHS:
-            r = self.req("GET", p)
+            r = self.req("HEAD", p, timeout=short_t)
+            if r is not None and r.status_code == 405:
+                r = self.req("GET", p, timeout=short_t)
             if r is not None and r.status_code == 200:
                 swagger_found.append(p)
                 ct = r.headers.get("Content-Type", "")
-                self.track("GET", p, r.status_code, ct)
+                self.track("HEAD" if r.request.method == "HEAD" else "GET", p, r.status_code, ct)
                 findings.append(f"Swagger/OpenAPI doc: {p}")
         if swagger_found:
             score += 4
@@ -402,14 +405,23 @@ class APIAnalyzer:
             findings.append("No URL-path versioning (/v1, /v2, /v3) detected")
 
         hdr_version = ""
-        probe = self.req("GET", "/", headers={"X-API-Version": "2"})
+        explicit_ver_headers = []
+        probe = self.req("GET", "/", headers={"X-API-Version": "2", "API-Version": "2"})
         if probe is not None:
+            for hk in ("API-Version", "X-API-Version"):
+                hv = probe.headers.get(hk)
+                if hv:
+                    explicit_ver_headers.append(f"{hk}: {hv}")
             for hk, hv in probe.headers.items():
                 hl = hk.lower()
                 if "version" in hl and hl not in ("x-powered-by", "server"):
                     hdr_version = f"{hk}: {hv}"
                     break
-        if hdr_version:
+        if explicit_ver_headers:
+            score += 3
+            hdr_version = explicit_ver_headers[0]
+            findings.append(f"Explicit API version header present ({'; '.join(explicit_ver_headers)[:80]})")
+        elif hdr_version:
             score += 2
             findings.append(f"Version advertised via header ({hdr_version[:80]})")
         else:
@@ -494,7 +506,7 @@ class APIAnalyzer:
         self.raw["api_versions"] = sorted(versions)
         self.raw["breaking_change_hints"] = breaking_hints
         self.raw["deprecation"] = {"header": dep_found, "sunset": sunset_found}
-        return self.category("versioning", "Versioning & Lifecycle", 12, max(score, 0), findings)
+        return self.category("versioning", "Versioning & Lifecycle", 14, max(score, 0), findings)
 
     def check_realtime(self):
         findings = []
@@ -732,8 +744,9 @@ class APIAnalyzer:
         findings = []
         score = 0
         gql_endpoint = None
+        short_t = min(self.timeout, 5)
         for p in ("/graphql", "/gql", "/api/graphql", "/v1/graphql"):
-            r = self.req("POST", p, json={"query": "{__typename}"})
+            r = self.req("POST", p, json={"query": "{__typename}"}, timeout=short_t)
             if r is None:
                 continue
             self.track("POST", p, r.status_code, r.headers.get("Content-Type", ""))
@@ -742,10 +755,40 @@ class APIAnalyzer:
                 body = r.text[:500]
             except Exception:
                 body = ""
-            if r.status_code < 500 and ("application/json" in r.headers.get("Content-Type", "") or "__typename" in body or "data" in body):
-                if r.status_code == 200 or "errors" in body or "data" in body:
+            ct_low = r.headers.get("Content-Type", "").lower()
+            if r.status_code < 500 and (
+                "application/json" in ct_low
+                or "graphql" in ct_low
+                or "__typename" in body
+                or "data" in body
+                or "graphql" in body.lower()
+            ):
+                if r.status_code == 200 or "errors" in body or "data" in body or "graphql" in (body + ct_low).lower():
                     gql_endpoint = p
                     findings.append(f"GraphQL endpoint detected: {p} ({r.status_code})")
+                    break
+        if not gql_endpoint:
+            for p in ("/graphql", "/gql", "/api/graphql"):
+                r = self.req("GET", p, timeout=short_t)
+                if r is None:
+                    continue
+                ct_low = r.headers.get("Content-Type", "").lower()
+                body_head = ""
+                try:
+                    body_head = (r.text or "")[:2000]
+                except Exception:
+                    body_head = ""
+                if "graphql" in ct_low or "graphql" in body_head.lower() or "Must provide query" in body_head:
+                    if r.status_code < 500:
+                        gql_endpoint = p
+                        self.track("GET", p, r.status_code, r.headers.get("Content-Type", ""))
+                        findings.append(f"GraphQL signal on {p}: content-type/body indicates GraphQL ({r.status_code})")
+                        break
+        if not gql_endpoint:
+            for e in self.endpoints:
+                if "graphql" in (e.get("path") or "").lower() and isinstance(e.get("status"), int) and e["status"] < 500:
+                    gql_endpoint = e["path"]
+                    findings.append(f"GraphQL path discovered: {e['path']} ({e['status']})")
                     break
         if gql_endpoint:
             score += 3
@@ -922,6 +965,16 @@ class APIAnalyzer:
                 score += 5
             else:
                 findings.append("No X-RateLimit-* headers on normal responses")
+            named = []
+            for hk in ("RateLimit-Limit", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset", "Retry-After"):
+                hv = r.headers.get(hk)
+                if hv is not None:
+                    named.append(f"{hk}={hv}")
+            if named:
+                score += 2
+                findings.append(f"Standard rate-limit headers present: {', '.join(named)}")
+            else:
+                findings.append("No RateLimit-Limit / X-RateLimit-Limit / Retry-After headers observed")
         triggered = False
         for i in range(25):
             rr = self.req("GET", "/")
@@ -931,6 +984,7 @@ class APIAnalyzer:
                 ra = rr.headers.get("Retry-After", "")
                 if ra:
                     findings.append(f"Retry-After: {ra}")
+                    score += 2
                 score += 4
                 break
         if not triggered:
@@ -938,7 +992,7 @@ class APIAnalyzer:
         r2 = self.req("GET", "/")
         if r2 is not None:
             rl2 = {k: v for k, v in r2.headers.items() if "ratelimit" in k.lower().replace("-", "") or "rate-limit" in k.lower()}
-            if rl2 and score < 6:
+            if rl2 and score < 8:
                 score += 2
                 findings.append("Rate limit configuration exposed via headers")
             ct = r2.headers.get("Content-Type", "")
@@ -951,7 +1005,7 @@ class APIAnalyzer:
         else:
             findings.append("Recommendation: enforce rate limits with standard headers")
         self.raw["rate_limit_signals"] = score >= 4
-        return self.category("rate_limit", "Rate Limiting", 10, max(score, 0), findings)
+        return self.category("rate_limit", "Rate Limiting", 13, max(score, 0), findings)
 
     def check_validation(self):
         findings = []
@@ -1290,8 +1344,9 @@ class APIAnalyzer:
         score = 0
         spec = None
         spec_path = ""
-        for p in ("/openapi.json", "/swagger.json", "/v2/api-docs", "/api-docs", "/swagger/v1/swagger.json"):
-            r = self.req("GET", p)
+        short_t = min(self.timeout, 5)
+        for p in ("/openapi.json", "/swagger.json", "/v3/api-docs", "/v2/api-docs", "/api-docs", "/swagger/v1/swagger.json"):
+            r = self.req("GET", p, timeout=short_t)
             if r is not None and r.status_code == 200 and ("json" in r.headers.get("Content-Type", "") or r.text.strip().startswith("{")):
                 try:
                     data = r.json()
@@ -1303,6 +1358,11 @@ class APIAnalyzer:
                         break
                 except Exception:
                     pass
+            elif r is not None and r.status_code in (401, 403) and not spec_path:
+                findings.append(f"Spec path requires auth: {p} ({r.status_code})")
+                score += 0.5
+                spec_path = p
+                break
         spec_blob = ""
         if spec:
             p, data = spec
@@ -1329,7 +1389,7 @@ class APIAnalyzer:
                 findings.append("Spec marks operations as deprecated (explicit deprecation policy)")
             if re.search(r"changelog|migration|upgrade", examples, re.I):
                 findings.append("Spec/docs reference migration or upgrade guidance")
-        else:
+        elif not spec_path:
             findings.append("No OpenAPI/Swagger specification found at common locations")
         rdocs = self.req("GET", "/docs")
         if rdocs is not None and rdocs.status_code == 200 and len(rdocs.text) > 500:
@@ -1353,7 +1413,7 @@ class APIAnalyzer:
             findings.append("Recommendation: publish an OpenAPI spec and human-readable docs with examples")
         self.raw["openapi_spec_path"] = spec_path
         self.raw["spec_has_request_bodies"] = bool(spec_blob and "requestBody" in spec_blob)
-        return self.category("docs", "Documentation Quality", 5, max(score, 0), findings)
+        return self.category("docs", "Documentation Quality", 6, max(score, 0), findings)
 
     def check_errors(self):
         findings = []

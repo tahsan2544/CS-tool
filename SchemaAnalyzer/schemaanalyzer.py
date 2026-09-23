@@ -21,7 +21,7 @@ except ImportError:
     os.system(f"{sys.executable} -m pip install beautifulsoup4 -q")
     from bs4 import BeautifulSoup
 
-VERSION = "1.0"
+VERSION = "2.0"
 BANNER = r"""
    ███████╗ ██████╗ █████╗ ███╗   ██╗ ██████╗ ███████╗ ██████╗  █████╗  ██████╗██╗  ██╗
    ██╔════╝██╔════╝██╔══██╗████╗  ██║██╔════╝ ██╔════╝██╔═══██╗██╔══██╗██╔════╝██║  ██║
@@ -29,7 +29,7 @@ BANNER = r"""
    ╚════██║██║     ██╔══██║██║╚██╗██║██║   ██║██╔══╝  ██║   ██║██╔══██║██║     ██╔══██║
    ███████║╚██████╗██║  ██║██║ ╚████║╚██████╔╝███████╗╚██████╔╝██║  ██║╚██████╗██║  ██║
    ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
-                         v1.0  -  Structured Data Analyzer
+                         v2.0  -  Structured Data Analyzer
 """
 
 DEPRECATED_PROPERTIES = ["isBasedOnUrl", "containedIn", "serviceInput", "serviceOutput"]
@@ -160,7 +160,7 @@ class SchemaAnalyzer:
 
     def fetch(self):
         headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; SchemaAnalyzer/1.0; +https://example.local)",
+            "User-Agent": "Mozilla/5.0 (compatible; SchemaAnalyzer/2.0; +https://example.local)",
             "Accept": "text/html,application/xhtml+xml",
         }
         self.log(f"GET {self.url} timeout={self.timeout}")
@@ -474,24 +474,24 @@ class SchemaAnalyzer:
         score = 0
         md = self.microdata_attrs
         if md["itemscope"] > 0:
-            score += 3
+            score += 2
             details.append(f"itemscope found on {md['itemscope']} element(s)")
         if md["itemprop"] > 0:
-            score += 3
+            score += 1
             details.append(f"itemprop found on {md['itemprop']} element(s)")
         if md.get("schema_itemtype", 0) > 0:
-            score += 2
+            score += 1
             details.append(f"itemtype with schema.org URL on {md['schema_itemtype']} element(s)")
         elif md["itemtype"] > 0:
             details.append("itemtype present but not schema.org URLs")
             issues.append({"category": "Microdata", "severity": "medium", "message": "itemtype values are not schema.org URLs", "remediation": "Use full URLs like https://schema.org/Organization"})
         if self.microdata_nested > 0:
-            score += 2
+            score += 1
             details.append(f"Nested microdata detected ({self.microdata_nested} nested scope(s))")
         if md["itemscope"] == 0 and md["itemprop"] == 0:
             details.append("No Microdata markers found on page")
             issues.append({"category": "Microdata", "severity": "low", "message": "No Microdata (itemscope/itemprop) markup detected", "remediation": "Prefer JSON-LD; add Microdata only if legacy consumers require it"})
-        self.add_result("microdata", "Microdata Detection", min(score, 10), 10, details, issues)
+        self.add_result("microdata", "Microdata Detection", min(score, 5), 5, details, issues)
 
     def check_rdfa(self):
         details = []
@@ -523,7 +523,7 @@ class SchemaAnalyzer:
         for t in DETECTABLE_TYPES:
             if t in found or (t == "Article" and "BlogPosting" in found):
                 matched.append(t)
-        per = 15.0 / len(DETECTABLE_TYPES)
+        per = 10.0 / len(DETECTABLE_TYPES)
         score = per * len(matched)
         if matched:
             details.append("Detected: " + ", ".join(matched))
@@ -533,7 +533,7 @@ class SchemaAnalyzer:
             issues.append({"category": "Schema Types", "severity": "medium", "message": "Missing common schema types: " + ", ".join(missing), "remediation": "Add the types relevant to your pages (e.g. Organization + WebSite on every page)"})
         if not matched:
             issues.append({"category": "Schema Types", "severity": "high", "message": "No common schema.org types detected", "remediation": "Implement at least Organization and WebSite JSON-LD"})
-        self.add_result("types", "Common Schema Types", round(min(score, 15), 2), 15, details, issues)
+        self.add_result("types", "Common Schema Types", round(min(score, 10), 2), 10, details, issues)
 
     def check_validation(self):
         details = []
@@ -852,6 +852,154 @@ class SchemaAnalyzer:
             details.append(f"Entity identity signals: {connectivity}/4")
         self.add_result("entities", "Entity Linking", round(min(score, 5), 2), 5, details, issues)
 
+    def check_structured_features(self):
+        details = []
+        issues = []
+        score = 0
+
+        faq_entries = self.schemas_of_type("FAQPage")
+        faq_pairs = 0
+        faq_ok = 0
+        for entry in faq_entries:
+            data = entry.get("data") or {}
+            entities = data.get("mainEntity")
+            if isinstance(entities, dict):
+                entities = [entities]
+            if not isinstance(entities, list):
+                continue
+            for qa in entities:
+                if not isinstance(qa, dict):
+                    continue
+                faq_pairs += 1
+                question = qa.get("question") or qa.get("name")
+                answer = qa.get("answer") or qa.get("acceptedAnswer")
+                if isinstance(answer, dict):
+                    answer = answer.get("text") or answer.get("name")
+                if question and answer:
+                    faq_ok += 1
+        if faq_entries and faq_pairs and faq_ok == faq_pairs:
+            score += 2
+            details.append(f"FAQPage: {faq_ok}/{faq_pairs} non-empty question/answer pair(s)")
+        elif faq_entries:
+            score += 1
+            details.append(f"FAQPage present but only {faq_ok}/{faq_pairs} complete Q/A pair(s)")
+            issues.append({"category": "Structured Features", "severity": "medium", "message": f"FAQPage mainEntity has incomplete Q/A pairs ({faq_ok}/{faq_pairs})", "remediation": "Give every mainEntity item a non-empty question and answer"})
+        else:
+            details.append("No FAQPage schema present")
+
+        bc_entries = self.schemas_of_type("BreadcrumbList")
+        bc_ok = 0
+        bc_items = 0
+        for entry in bc_entries:
+            data = entry.get("data") or {}
+            elements = data.get("itemListElement")
+            if isinstance(elements, dict):
+                elements = [elements]
+            if not isinstance(elements, list):
+                continue
+            for item in elements:
+                if not isinstance(item, dict):
+                    continue
+                bc_items += 1
+                if item.get("position") is not None and (item.get("name") or item.get("item")):
+                    bc_ok += 1
+        if bc_entries and bc_items and bc_ok == bc_items:
+            score += 2
+            details.append(f"BreadcrumbList: {bc_ok}/{bc_items} itemListElement entries have position + name/item")
+        elif bc_entries:
+            score += 1
+            details.append(f"BreadcrumbList: {bc_ok}/{bc_items} itemListElement entries valid")
+            issues.append({"category": "Structured Features", "severity": "medium", "message": "BreadcrumbList itemListElement entries missing position/name/item", "remediation": "Set position, name, and item on each itemListElement"})
+        else:
+            details.append("No BreadcrumbList schema present")
+
+        howto_entries = self.schemas_of_type("HowTo")
+        howto_steps = 0
+        howto_ok = 0
+        for entry in howto_entries:
+            data = entry.get("data") or {}
+            steps = data.get("step")
+            if isinstance(steps, dict):
+                steps = [steps]
+            if not isinstance(steps, list):
+                continue
+            for step in steps:
+                if not isinstance(step, dict):
+                    continue
+                howto_steps += 1
+                if step.get("name") and step.get("text"):
+                    howto_ok += 1
+        if howto_entries and howto_steps and howto_ok == howto_steps:
+            score += 2
+            details.append(f"HowTo: {howto_ok}/{howto_steps} step(s) with name and text")
+        elif howto_entries:
+            score += 1
+            details.append(f"HowTo: {howto_ok}/{howto_steps} complete step(s)")
+            issues.append({"category": "Structured Features", "severity": "medium", "message": "HowTo steps missing name or text", "remediation": "Provide name and text on every HowTo step"})
+        else:
+            details.append("No HowTo schema present")
+
+        video_entries = self.schemas_of_type("VideoObject")
+        video_ok = 0
+        for entry in video_entries:
+            data = entry.get("data") or {}
+            has_source = data.get("contentUrl") or data.get("embedUrl")
+            if has_source and data.get("thumbnailUrl"):
+                video_ok += 1
+        if video_entries and video_ok == len(video_entries):
+            score += 1
+            details.append(f"VideoObject: all {video_ok} video(s) have contentUrl/embedUrl + thumbnailUrl")
+        elif video_entries:
+            score += 1 if video_ok else 0
+            details.append(f"VideoObject: {video_ok}/{len(video_entries)} have contentUrl/embedUrl + thumbnailUrl")
+            issues.append({"category": "Structured Features", "severity": "medium", "message": "VideoObject missing contentUrl/embedUrl or thumbnailUrl", "remediation": "Add contentUrl (or embedUrl) and thumbnailUrl to each VideoObject"})
+        else:
+            details.append("No VideoObject schema present")
+
+        speakable_found = False
+        for type_name in ("WebPage", "Article", "BlogPosting"):
+            for entry in self.schemas_of_type(type_name):
+                if (entry.get("data") or {}).get("speakable"):
+                    speakable_found = True
+                    break
+            if speakable_found:
+                break
+        if speakable_found:
+            score += 1
+            details.append("speakable property present on WebPage/Article")
+        else:
+            details.append("No speakable property on WebPage/Article")
+            issues.append({"category": "Structured Features", "severity": "low", "message": "speakable property not found on WebPage/Article", "remediation": "Add speakable to WebPage/Article for voice-assistant eligibility"})
+
+        ids = []
+        same_as = []
+        for entry in self.schemas:
+            data = entry.get("data") or {}
+            if data.get("@id"):
+                ids.append(str(data.get("@id")))
+            val = data.get("sameAs")
+            if isinstance(val, str):
+                same_as.append(val)
+            elif isinstance(val, list):
+                same_as.extend([v for v in val if isinstance(v, str)])
+        linkage = 0
+        if ids:
+            linkage += 1
+        if same_as:
+            linkage += 1
+        if linkage == 2:
+            score += 2
+            details.append(f"Graph linkage: {len(ids)} @id value(s) and {len(same_as)} sameAs link(s)")
+        elif linkage == 1:
+            score += 1
+            details.append("Partial graph linkage: " + ("@id present but no sameAs" if ids else "sameAs present but no @id"))
+            issues.append({"category": "Structured Features", "severity": "low", "message": "Incomplete @id/sameAs graph linkage", "remediation": "Add both @id anchors and sameAs profile links to connect entities"})
+        else:
+            details.append("No @id or sameAs graph linkage found")
+            issues.append({"category": "Structured Features", "severity": "medium", "message": "No @id/sameAs graph linkage detected", "remediation": "Add @id to entity nodes and sameAs to Organization for knowledge-graph linkage"})
+
+        self.add_result("structured", "Structured Data Features", round(min(score, 10), 2), 10, details, issues)
+
     def analyze(self):
         self.fetch()
         self.extract_jsonld()
@@ -868,6 +1016,7 @@ class SchemaAnalyzer:
         self.check_version()
         self.check_multi_format()
         self.check_entities()
+        self.check_structured_features()
         self.total = round(sum(r["score"] for r in self.results), 2)
         self.letter, self.letter_color = grade_for(self.total)
         return self
@@ -1066,7 +1215,7 @@ class SchemaAnalyzer:
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="SchemaAnalyzer",
-        description="SchemaAnalyzer v1.0 — deep-analyze schema.org structured data (JSON-LD, Microdata, RDFa).",
+        description="SchemaAnalyzer v2.0 — deep-analyze schema.org structured data (JSON-LD, Microdata, RDFa).",
     )
     parser.add_argument("-u", "--url", required=True, help="Target URL to analyze")
     parser.add_argument("-t", "--timeout", type=int, default=15, help="Request timeout in seconds (default: 15)")

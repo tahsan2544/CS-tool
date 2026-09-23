@@ -9,8 +9,13 @@
 ![Python](https://img.shields.io/badge/Python-3.7%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-4C1?style=for-the-badge)
 ![Tools](https://img.shields.io/badge/Tools-19-FF6B6B?style=for-the-badge)
-![Lines](https://img.shields.io/badge/Code-71%2C666%20lines-FFA500?style=for-the-badge)
+![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
 ![Status](https://img.shields.io/badge/Status-Stable-brightgreen?style=for-the-badge)
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/tahsan2544)
+[![Star on GitHub](https://img.shields.io/github/stars/tahsan2544/CS-tool?style=for-the-badge&logo=github)](https://github.com/tahsan2544/CS-tool)
+
+**[Quick Start](#-quick-start)** · **[All Tools](#%EF%B8%8F-available-tools-19)** · **[Upgrade Roadmap](#%EF%B8%8F-upgrade-roadmap)** · **[Full Scan](#-full-scan)** · **[Contributing](#-contributing)**
 
 </div>
 
@@ -24,11 +29,13 @@
 - [Available Tools](#-available-tools)
 - [Usage Examples](#-usage-examples)
 - [Full Scan](#-full-scan)
-- [Upgrade Roadmap](#-upgrade-roadmap)
+- [Upgrade Roadmap](#️-upgrade-roadmap)
 - [Export Formats](#-export-formats)
 - [Tool Details](#-tool-details)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
+- [Changelog](CHANGELOG.md)
+- [Security Policy](SECURITY.md)
 - [License](#-license)
 
 ---
@@ -81,11 +88,42 @@ python cstools.py seo -u https://example.com
 # Run a full security audit
 python cstools.py security -u https://example.com
 
-# Run ALL analysis tools at once
+# Run all analysis tools at once
 python cstools.py scan -u https://example.com --export all
 
 # Get a prioritized upgrade roadmap (what to fix for a better rating)
 python cstools.py upgrade -u https://example.com --export all
+```
+
+### One-line install (from GitHub)
+
+```bash
+pip install "git+https://github.com/tahsan2544/CS-tool.git" && cstools list
+```
+
+---
+
+## 📁 Repository Layout
+
+```
+CS-tool/
+├── cstools.py              # Unified CLI (entry point)
+├── README.md               # This file
+├── CHANGELOG.md            # Release history
+├── CONTRIBUTING.md         # How to add/upgrade tools
+├── SECURITY.md             # Vulnerability reporting
+├── LICENSE                 # MIT
+├── pyproject.toml          # Modern packaging
+├── setup.py                # Setuptools packaging
+├── requirements.txt        # Runtime dependencies
+├── .github/
+│   ├── workflows/ci.yml    # Compile + smoke-test CI
+│   ├── ISSUE_TEMPLATE/     # Bug / feature templates
+│   └── PULL_REQUEST_TEMPLATE.md
+└── <ToolName>/             # One directory per tool (19)
+    ├── <toolname>.py       # Main analyzer
+    ├── setup.py
+    └── requirements.txt
 ```
 
 ---
@@ -642,28 +680,24 @@ python cstools.py loadstorm --help
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how:
+Full guidelines live in **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add amazing feature'`)
-4. **Push** to the branch (`git push origin feature/amazing-feature`)
-5. **Open** a Pull Request
+Quick version:
 
-### Development Setup
+1. Fork and create a feature branch (`git checkout -b feat/my-tool`)
+2. Match existing tool layout (`YourTool/yourtool.py` + `setup.py` + `requirements.txt`)
+3. Wire it into `cstools.py` (path, TOOLS, `cmd_*`, subparser, banner)
+4. `python -m py_compile` your files and smoke-test `--help`
+5. Open a PR using the template
 
-```bash
-git clone https://github.com/tahsan2544/CS-tool.git
-cd CS-tool
-pip install -r requirements.txt
-```
+**Please read [SECURITY.md](SECURITY.md) before reporting vulnerabilities in this codebase.**
 
 ### Adding a New Tool
 
 1. Create a new directory: `YourTool/`
 2. Add `yourtool.py`, `setup.py`, `requirements.txt`
 3. Update `cstools.py` with the new tool
-4. Update `README.md`
+4. Update `README.md` and `CHANGELOG.md`
 
 ---
 
@@ -679,13 +713,18 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 - GitHub: [@tahsan2544](https://github.com/tahsan2544)
 - Repository: [CS-Tool](https://github.com/tahsan2544/CS-tool)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Security: [SECURITY.md](SECURITY.md)
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
 <div align="center">
 
-**⭐ Star this repo if you find it useful!**
+### If CS Tools helps you, star the repo ⭐
 
-Made with ❤️ for the web development community
+[![Star History Chart](https://api.star-history.com/svg?repos=tahsan2544/CS-tool&type=Date)](https://star-history.com/#tahsan2544/CS-tool&Date)
+
+**MIT License** · Built for the web development community
 
 </div>

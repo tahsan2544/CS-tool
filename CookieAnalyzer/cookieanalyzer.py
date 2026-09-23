@@ -25,7 +25,7 @@ except ImportError:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "beautifulsoup4"])
     from bs4 import BeautifulSoup
 
-VERSION = "1.0"
+VERSION = "2.0"
 TOOL_NAME = "CookieAnalyzer"
 
 BANNER_LINES = [
@@ -293,7 +293,8 @@ class Colors:
 
 class CookieItem:
     def __init__(self, name, value, domain="", path="/", secure=False,
-                 httponly=False, samesite="", expires=None, source="header"):
+                 httponly=False, samesite="", expires=None, source="header",
+                 partitioned=False):
         self.name = name
         self.value = value or ""
         self.domain = domain or ""
@@ -303,6 +304,7 @@ class CookieItem:
         self.samesite = samesite or ""
         self.expires = expires
         self.source = source
+        self.partitioned = bool(partitioned)
 
     @property
     def host_only(self):
@@ -336,6 +338,7 @@ class CookieItem:
             "days_left": self.days_left,
             "source": self.source,
             "size": self.size,
+            "partitioned": self.partitioned,
             "purpose": getattr(self, "purpose", "unknown"),
         }
 
@@ -371,11 +374,16 @@ def parse_expiry_from_morsel(morsel):
     return None
 
 
+def has_partitioned_attribute(raw):
+    return any(p.strip().lower() == "partitioned" for p in (raw or "").split(";"))
+
+
 def parse_set_cookie(raw, source="header"):
     items = []
     raw = (raw or "").strip()
     if not raw:
         return items
+    partitioned = has_partitioned_attribute(raw)
     sc = SimpleCookie()
     try:
         sc.load(raw)
@@ -394,6 +402,7 @@ def parse_set_cookie(raw, source="header"):
                 samesite=(morsel.get("samesite") or "").strip(),
                 expires=expires,
                 source=source,
+                partitioned=partitioned,
             ))
         return items
     m = re.match(r"\s*([^=;\s]+)\s*=\s*([^;]*)", raw)
@@ -423,6 +432,7 @@ def parse_set_cookie(raw, source="header"):
             samesite=ss_m.group(1).strip() if ss_m else "",
             expires=exp,
             source=source,
+            partitioned=partitioned,
         ))
     return items
 
@@ -577,6 +587,7 @@ class CookieAnalyzer:
                         samesite=str(rest.get("SameSite", "") or ""),
                         expires=expires,
                         source="header",
+                        partitioned=any(str(k).lower() == "partitioned" for k in rest),
                     ))
             except Exception as exc:
                 self.log("jar parse error: " + str(exc))
@@ -618,6 +629,7 @@ class CookieAnalyzer:
                 samesite=ss_m.group(1).strip() if ss_m else "",
                 expires=expires,
                 source="script",
+                partitioned=has_partitioned_attribute(pair),
             )
             self.script_cookies.append(item)
             self.log("document.cookie: " + name)
@@ -856,20 +868,31 @@ class CookieAnalyzer:
             findings.append(self.finding("First-party vs third-party split", "pass", 5, 5,
                                          "No third-party exposure"))
         else:
+            fp_items = [c for c in self.cookies if c not in self.third_party]
+            fp_sess = sum(1 for c in fp_items if c.is_session)
+            fp_pers = len(fp_items) - fp_sess
+            tp_sess = sum(1 for c in self.third_party if c.is_session)
+            tp_pers = len(self.third_party) - tp_sess
+            split_detail = ("1P: " + str(len(fp_items)) + " (" + str(fp_sess) + " session, " +
+                            str(fp_pers) + " persistent); 3P: " + str(len(self.third_party)) +
+                            " (" + str(tp_sess) + " session, " + str(tp_pers) + " persistent)")
             ratio = len(self.third_party) / float(count)
             if len(self.third_party) == 0:
                 findings.append(self.finding("First-party vs third-party split", "pass", 5, 5,
-                                             "100% first-party cookies"))
+                                             "100% first-party cookies; " + split_detail))
             elif ratio <= 0.25:
                 findings.append(self.finding("First-party vs third-party split", "pass", 4, 5,
-                                             str(len(self.third_party)) + " third-party of " + str(count)))
+                                             str(len(self.third_party)) + " third-party of " +
+                                             str(count) + "; " + split_detail))
             elif ratio <= 0.5:
                 findings.append(self.finding("First-party vs third-party split", "warn", 2, 5,
-                                             "Third-party ratio " + format(ratio * 100, ".0f") + "%",
+                                             "Third-party ratio " + format(ratio * 100, ".0f") +
+                                             "%; " + split_detail,
                                              "Reduce third-party cookies or self-host tracking endpoints"))
             else:
                 findings.append(self.finding("First-party vs third-party split", "fail", 0, 5,
-                                             "Third-party ratio " + format(ratio * 100, ".0f") + "%",
+                                             "Third-party ratio " + format(ratio * 100, ".0f") +
+                                             "%; " + split_detail,
                                              "Replace third-party tags with first-party or server-side alternatives"))
         if count == 0:
             findings.append(self.finding("Session vs persistent cookies", "pass", 3, 3,
@@ -915,8 +938,10 @@ class CookieAnalyzer:
         findings = []
         header = list(self.header_cookies)
         if not self.cookies:
-            for label, mx in (("Secure flag coverage", 4), ("HttpOnly flag coverage", 4),
-                              ("SameSite attribute quality", 4), ("Cookie name prefixes", 3)):
+            for label, mx in (("Secure flag coverage", 3), ("HttpOnly flag coverage", 3),
+                              ("SameSite attribute quality", 3), ("Cookie name prefixes", 2),
+                              ("SameSite=None Secure enforcement", 2),
+                              ("CHIPS / Partitioned cookies", 2)):
                 findings.append(self.finding(label, "pass", mx, mx, "No cookies to harden"))
             return findings
         if header:
@@ -935,37 +960,37 @@ class CookieAnalyzer:
             h_ratio = 0.5
             samesite_cookies = list(self.script_cookies)
         if ratio >= 0.99:
-            findings.append(self.finding("Secure flag coverage", "pass", 4, 4,
+            findings.append(self.finding("Secure flag coverage", "pass", 3, 3,
                                          "All evaluable cookies carry Secure"))
         elif ratio >= 0.7:
-            findings.append(self.finding("Secure flag coverage", "warn", 3, 4,
+            findings.append(self.finding("Secure flag coverage", "warn", 2, 3,
                                          format(ratio * 100, ".0f") + "% of cookies have Secure",
                                          "Add the Secure attribute to every cookie"))
         elif ratio > 0:
-            findings.append(self.finding("Secure flag coverage", "warn", 1, 4,
+            findings.append(self.finding("Secure flag coverage", "warn", 1, 3,
                                          format(ratio * 100, ".0f") + "% of cookies have Secure",
                                          "Add the Secure attribute to every cookie sent over HTTPS"))
         else:
-            findings.append(self.finding("Secure flag coverage", "fail", 0, 4,
+            findings.append(self.finding("Secure flag coverage", "fail", 0, 3,
                                          "No cookies set the Secure attribute",
                                          "Set Secure on all cookies"))
         if h_ratio >= 0.99:
-            findings.append(self.finding("HttpOnly flag coverage", "pass", 4, 4,
+            findings.append(self.finding("HttpOnly flag coverage", "pass", 3, 3,
                                          "All eligible cookies are HttpOnly"))
         elif h_ratio >= 0.7:
-            findings.append(self.finding("HttpOnly flag coverage", "warn", 3, 4,
+            findings.append(self.finding("HttpOnly flag coverage", "warn", 2, 3,
                                          format(h_ratio * 100, ".0f") + "% HttpOnly coverage",
                                          "Mark authentication and session cookies HttpOnly"))
         elif h_ratio > 0:
-            findings.append(self.finding("HttpOnly flag coverage", "warn", 1, 4,
+            findings.append(self.finding("HttpOnly flag coverage", "warn", 1, 3,
                                          format(h_ratio * 100, ".0f") + "% HttpOnly coverage",
                                          "Set HttpOnly on all cookies not required by JavaScript"))
         else:
-            findings.append(self.finding("HttpOnly flag coverage", "fail", 0, 4,
+            findings.append(self.finding("HttpOnly flag coverage", "fail", 0, 3,
                                          "No HttpOnly cookies detected",
                                          "Set HttpOnly on session and authentication cookies"))
         if not samesite_cookies:
-            findings.append(self.finding("SameSite attribute quality", "warn", 0, 4,
+            findings.append(self.finding("SameSite attribute quality", "warn", 0, 3,
                                          "No SameSite values found",
                                          "Set SameSite=Lax or Strict on all cookies"))
         else:
@@ -981,35 +1006,66 @@ class CookieAnalyzer:
                     missing += 1
             avg = total / float(len(samesite_cookies))
             if avg >= 0.99:
-                findings.append(self.finding("SameSite attribute quality", "pass", 4, 4,
+                findings.append(self.finding("SameSite attribute quality", "pass", 3, 3,
                                              "Strict/Lax SameSite on all cookies"))
             elif avg >= 0.6:
-                findings.append(self.finding("SameSite attribute quality", "warn", 3, 4,
+                findings.append(self.finding("SameSite attribute quality", "warn", 2, 3,
                                              "Average SameSite score " + format(avg * 100, ".0f") + "%",
                                              "Add SameSite=Lax to cookies missing the attribute"))
             elif avg > 0:
-                findings.append(self.finding("SameSite attribute quality", "warn", 1, 4,
+                findings.append(self.finding("SameSite attribute quality", "warn", 1, 3,
                                              "Average SameSite score " + format(avg * 100, ".0f") +
                                              "% (" + str(missing) + " missing)",
                                              "Set SameSite=Strict or Lax; SameSite=None requires Secure"))
             else:
-                findings.append(self.finding("SameSite attribute quality", "fail", 0, 4,
+                findings.append(self.finding("SameSite attribute quality", "fail", 0, 3,
                                              "SameSite missing or insecure None",
                                              "Set SameSite=Strict or Lax on all cookies"))
         prefixed = [c for c in self.cookies if c.name.startswith("__Host-") or c.name.startswith("__Secure-")]
         sensitive = [c for c in self.cookies
                      if any(t in c.name.lower() for t in SENSITIVE_TOKENS) and not c.name.startswith("__")]
         if prefixed:
-            findings.append(self.finding("Cookie name prefixes", "pass", 3, 3,
+            findings.append(self.finding("Cookie name prefixes", "pass", 2, 2,
                                          "Prefixes found: " + ", ".join(sorted({c.name.split("=")[0][:20] for c in prefixed})[:5])))
         elif sensitive:
             names = ", ".join(c.name for c in sensitive[:3])
-            findings.append(self.finding("Cookie name prefixes", "fail", 1, 3,
+            findings.append(self.finding("Cookie name prefixes", "fail", 1, 2,
                                          "Sensitive cookies without __Host-/__Secure-: " + names,
                                          "Rename sensitive cookies with the __Host- or __Secure- prefix"))
         else:
-            findings.append(self.finding("Cookie name prefixes", "pass", 2, 3,
+            findings.append(self.finding("Cookie name prefixes", "pass", 1, 2,
                                          "No sensitive cookies requiring a prefix"))
+        none_cookies = [c for c in self.cookies if (c.samesite or "").lower() == "none"]
+        if not none_cookies:
+            findings.append(self.finding("SameSite=None Secure enforcement", "pass", 2, 2,
+                                         "No SameSite=None cookies to enforce"))
+        else:
+            insecure_none = [c for c in none_cookies if not c.secure]
+            if not insecure_none:
+                findings.append(self.finding("SameSite=None Secure enforcement", "pass", 2, 2,
+                                             str(len(none_cookies)) + " SameSite=None cookie(s), all Secure"))
+            elif len(insecure_none) < len(none_cookies):
+                findings.append(self.finding("SameSite=None Secure enforcement", "warn", 1, 2,
+                                             str(len(insecure_none)) + " of " + str(len(none_cookies)) +
+                                             " SameSite=None cookies lack Secure",
+                                             "Add Secure to every SameSite=None cookie (required by browsers)"))
+            else:
+                findings.append(self.finding("SameSite=None Secure enforcement", "fail", 0, 2,
+                                             "All SameSite=None cookies missing Secure (rejected by browsers)",
+                                             "Set Secure on all SameSite=None cookies or drop SameSite=None"))
+        partitioned_cookies = [c for c in self.cookies if getattr(c, "partitioned", False)]
+        if partitioned_cookies:
+            findings.append(self.finding("CHIPS / Partitioned cookies", "pass", 2, 2,
+                                         str(len(partitioned_cookies)) + " Partitioned (CHIPS) cookie(s)"))
+        elif prefixed:
+            findings.append(self.finding("CHIPS / Partitioned cookies", "pass", 1, 2,
+                                         "Name prefixes used (" + str(len(prefixed)) +
+                                         "); no Partitioned/CHIPS attributes",
+                                         "Consider Partitioned (CHIPS) for cross-site cookies"))
+        else:
+            findings.append(self.finding("CHIPS / Partitioned cookies", "warn", 0, 2,
+                                         "No Partitioned (CHIPS) or __Host-/__Secure- usage",
+                                         "Adopt CHIPS Partitioned cookies for cross-site state"))
         return findings
 
     def js_required(self, cookie):
@@ -1020,23 +1076,24 @@ class CookieAnalyzer:
         findings = []
         count = len(self.cookies)
         if count == 0:
-            findings.append(self.finding("Purpose classification coverage", "pass", 4, 4, "No cookies to classify"))
+            findings.append(self.finding("Purpose classification coverage", "pass", 3, 3, "No cookies to classify"))
             findings.append(self.finding("Expiry / long-lived cookie analysis", "pass", 4, 4, "No persistent cookies"))
             findings.append(self.finding("PII detection in names/values", "pass", 4, 4, "No cookies present"))
-            findings.append(self.finding("Tracking cookie detection", "pass", 3, 3, "No tracking cookies"))
+            findings.append(self.finding("Tracking cookie detection", "pass", 2, 2, "No tracking cookies"))
+            findings.append(self.finding("Long-lived cookies (>1 year)", "pass", 2, 2, "No cookies exceed one year"))
             return findings
         unknown = [c for c in self.cookies if getattr(c, "purpose", "unknown") == "unknown"]
         coverage = (count - len(unknown)) / float(count)
         if coverage >= 0.9:
-            findings.append(self.finding("Purpose classification coverage", "pass", 4, 4,
+            findings.append(self.finding("Purpose classification coverage", "pass", 3, 3,
                                          format(coverage * 100, ".0f") + "% of cookies classified"))
         elif coverage >= 0.6:
-            findings.append(self.finding("Purpose classification coverage", "warn", 2, 4,
+            findings.append(self.finding("Purpose classification coverage", "warn", 2, 3,
                                          format(coverage * 100, ".0f") + "% classified, " +
                                          str(len(unknown)) + " unknown",
                                          "Rename or document cookies with ambiguous names"))
         else:
-            findings.append(self.finding("Purpose classification coverage", "fail", 0, 4,
+            findings.append(self.finding("Purpose classification coverage", "fail", 0, 3,
                                          "Only " + format(coverage * 100, ".0f") + "% classified",
                                          "Use descriptive cookie names that reveal purpose"))
         persistent = [c for c in self.cookies if not c.is_session and c.days_left is not None]
@@ -1080,27 +1137,53 @@ class CookieAnalyzer:
                                          "Remove personal data from cookie names and values"))
         trackers = [c.name for c in self.tracker_cookies]
         if not trackers:
-            findings.append(self.finding("Tracking cookie detection", "pass", 3, 3,
+            findings.append(self.finding("Tracking cookie detection", "pass", 2, 2,
                                          "No known tracking cookies"))
         elif len(trackers) <= 2:
-            findings.append(self.finding("Tracking cookie detection", "warn", 1, 3,
+            findings.append(self.finding("Tracking cookie detection", "warn", 1, 2,
                                          "Trackers: " + ", ".join(trackers[:5]),
                                          "Gate tracking cookies behind explicit consent"))
         else:
-            findings.append(self.finding("Tracking cookie detection", "fail", 0, 3,
+            findings.append(self.finding("Tracking cookie detection", "fail", 0, 2,
                                          str(len(trackers)) + " tracking cookies detected",
                                          "Consolidate trackers and load them only after consent"))
+        long_live = [c for c in self.cookies
+                     if not c.is_session and c.days_left is not None and c.days_left > 365]
+        long_trackers = [c for c in long_live if self.is_tracker_cookie(c)]
+        if not long_live:
+            findings.append(self.finding("Long-lived cookies (>1 year)", "pass", 2, 2,
+                                         "No cookies exceed one year"))
+        elif long_trackers:
+            names = ", ".join(c.name for c in long_trackers[:3])
+            findings.append(self.finding("Long-lived cookies (>1 year)", "fail", 0, 2,
+                                         str(len(long_trackers)) + " tracker(s) >1 year: " + names,
+                                         "Cap tracking cookie lifetimes at one year or less"))
+        else:
+            max_days = max(c.days_left for c in long_live)
+            findings.append(self.finding("Long-lived cookies (>1 year)", "warn", 1, 2,
+                                         str(len(long_live)) + " cookie(s) >1 year (max " +
+                                         str(max_days) + " days)",
+                                         "Reduce lifetimes to 12 months or less"))
         return findings
 
     def check_consent(self):
         findings = []
         consent = self.consent
+        lower_html = self.html.lower()
+        signal_hits = []
+        for probe in ("onetrust", "cookiebot", "osano", "didomi", "cookieyes", "cookie consent"):
+            if probe in lower_html:
+                signal_hits.append(probe)
         if consent["banner"]:
-            findings.append(self.finding("Cookie consent banner detection", "pass", 4, 4,
-                                         "Consent banner/notice detected"))
+            detail = "Consent banner/notice detected"
+            if signal_hits:
+                detail += " (signals: " + ", ".join(signal_hits[:5]) + ")"
+            findings.append(self.finding("Cookie consent banner detection", "pass", 4, 4, detail))
         else:
             findings.append(self.finding("Cookie consent banner detection", "fail", 0, 4,
-                                         "No cookie consent banner found",
+                                         "No cookie consent banner found" +
+                                         (" (partial signals: " + ", ".join(signal_hits[:5]) + ")"
+                                          if signal_hits else ""),
                                          "Deploy a cookie consent banner before setting non-essential cookies"))
         if consent["tool"]:
             findings.append(self.finding("Consent management tool identification", "pass", 4, 4,

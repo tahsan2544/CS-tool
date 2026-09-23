@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='cdnanalyzer',
-    version='1.0.0',
+    version='2.0.0',
     description='CDN Performance Analyzer - CDN Detection, Caching, Edge Performance',
     author='tahsan2544',
     author_email='tahsan2544@gmail.com',

@@ -2,13 +2,13 @@ from setuptools import setup, find_packages
 
 setup(
     name='cs-tools',
-    version='1.0.0',
+    version='1.1.0',
     description='CS Tools - Comprehensive Website Measurement & Analysis Toolkit',
     long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
     author='tahsan2544',
     author_email='tahsan2544@gmail.com',
-    url='https://github.com/tahsan2544/CS-Tools',
+    url='https://github.com/tahsan2544/CS-tool',
     license='MIT',
     python_requires='>=3.7',
     install_requires=[
@@ -19,6 +19,8 @@ setup(
         'websockets>=12.0',
         'dnspython>=2.4.0',
     ],
+    packages=[],
+    py_modules=['cstools'],
     entry_points={
         'console_scripts': [
             'cstools=cstools:main',

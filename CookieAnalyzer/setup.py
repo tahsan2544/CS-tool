@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='cookieanalyzer',
-    version='1.0.0',
+    version='2.0.0',
     description='Cookie Privacy Analyzer - GDPR, CCPA, Consent Management, Security',
     author='tahsan2544',
     author_email='tahsan2544@gmail.com',

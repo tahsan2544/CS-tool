@@ -428,7 +428,7 @@ def build_parser():
         description="Aggregate all CS Tools scores and print a prioritized upgrade roadmap.",
     )
     p.add_argument("-u", "--url", required=True, help="Target URL")
-    p.add_argument("-t", "--timeout", type=int, default=45, help="Per-tool timeout (default 45)")
+    p.add_argument("-t", "--timeout", type=int, default=60, help="Per-tool timeout (default 60)")
     p.add_argument("--export", default="none", choices=["all", "json", "html", "none"],
                    help="Export format")
     p.add_argument("--no-color", action="store_true", help="Disable colors")

@@ -3,43 +3,57 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-*.egg-info/
-dist/
+.Python
 build/
-*.egg
+develop-eggs/
+dist/
+downloads/
+eggs/
 .eggs/
-*.manifest
-*.spec
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual Environment
-venv/
-env/
+# Virtual environments
 .venv/
-.env/
+venv/
+ENV/
+env/
 
-# IDE
-.vscode/
+# Tooling / IDE
 .idea/
+.vscode/
 *.swp
 *.swo
-*~
-
-# OS
 .DS_Store
-Thumbs.db
 
-# Test/Output files
+# Test / analysis output (do not commit scan artifacts)
 output/
+exports/
 *.log
-*_report_*.json
-*_report_*.csv
-*_report_*.html
+upgrade_roadmap_*.json
+upgrade_roadmap_*.html
+seo_report_*.json
+seo_report_*.csv
+seo_report_*.html
+security_report_*
+perf_report_*
+uptime_report_*
+*_report_20*.json
+*_report_20*.csv
+*_report_20*.html
 dns_records.json
 
-# Secrets
+# Secrets — never commit
 .env
 .env.*
-*.key
+!.env.example
 *.pem
+*.key
 secrets.json
-credentials.json

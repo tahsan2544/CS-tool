@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, Default-Branch]
+  pull_request:
+    branches: [main, Default-Branch]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compile all Python sources
+        run: |
+          find . -name "*.py" -not -path "./.git/*" -print0 | xargs -0 python -m py_compile
+
+      - name: CLI help smoke test
+        run: |
+          python cstools.py --help
+          python cstools.py list
+
+      - name: Subcommand registration smoke test
+        run: |
+          python cstools.py --help | grep -q seo
+          python cstools.py --help | grep -q upgrade
+          python cstools.py --help | grep -q scan

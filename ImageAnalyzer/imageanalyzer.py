@@ -42,11 +42,11 @@ if _HAS_PIL:
         _HAS_PIL = False
 
 
-VERSION = "2.0"
+VERSION = "3.0"
 MAX_NETWORK_IMAGES = 25
 MAX_DEEP_IMAGES = 12
 MAX_IMAGE_BYTES = 6 * 1024 * 1024
-USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 ImageAnalyzer/2.0"
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 ImageAnalyzer/3.0"
 
 MODERN_FORMATS = {"webp", "avif", "svg"}
 LEGACY_FORMATS = {"jpg", "jpeg", "png", "gif", "bmp", "tif", "tiff", "ico"}
@@ -124,6 +124,9 @@ CDN_TRANSFORM_RES = [
     re.compile(r"[?&]h_\d+", re.I),
     re.compile(r"c_fill", re.I),
     re.compile(r"[?&]tr=w-", re.I),
+    re.compile(r"[?&]q=\d+", re.I),
+    re.compile(r"[?&]fm=[a-z0-9]+", re.I),
+    re.compile(r"[?&]auto=format\b", re.I),
 ]
 AUTO_FORMAT_RES = [
     re.compile(r"f_auto", re.I),
@@ -1172,42 +1175,42 @@ class ImageAnalyzer:
         if known:
             avg = total_bytes / max(len(known), 1)
             if avg <= 50 * 1024:
-                e = 2.5
+                e = 2
                 msg = f"Average image size {human_size(avg)} - excellent"
             elif avg <= 150 * 1024:
-                e = 1.9
+                e = 1.5
                 msg = f"Average image size {human_size(avg)} - acceptable"
             elif avg <= 400 * 1024:
-                e = 1.1
+                e = 0.9
                 msg = f"Average image size {human_size(avg)} - too large"
             else:
                 e = 0
                 msg = f"Average image size {human_size(avg)} - critically large"
-            rec = "" if e >= 1.9 else "Resize and recompress images; target under 100 KB average"
+            rec = "" if e >= 1.5 else "Resize and recompress images; target under 100 KB average"
         else:
-            e = 1.25
+            e = 1
             msg = "Could not determine average image size (no Content-Length headers)"
             rec = "Ensure your server exposes Content-Length for image assets"
-        cat.add("File size analysis", e, 2.5, msg, rec)
+        cat.add("File size analysis", e, 2, msg, rec)
 
         if known:
             largest = max(known, key=lambda i: i.size_bytes or 0)
             lb = largest.size_bytes or 0
             if lb <= 300 * 1024:
-                e = 2
+                e = 1.5
                 msg = f"Largest image {human_size(lb)} ({urlparse(largest.abs_url).path})"
             elif lb <= 1024 * 1024:
-                e = 1.2
+                e = 0.9
                 msg = f"Largest image {human_size(lb)} - should be split or resized"
             else:
                 e = 0
                 msg = f"Largest image {human_size(lb)} - severe payload"
-            rec = "" if e >= 2 else "Compress or art-direct the largest asset; use responsive variants"
+            rec = "" if e >= 1.5 else "Compress or art-direct the largest asset; use responsive variants"
         else:
-            e = 1.0
+            e = 0.75
             msg = "Largest image unknown"
             rec = ""
-        cat.add("Largest image", e, 2, msg, rec)
+        cat.add("Largest image", e, 1.5, msg, rec)
 
         over100 = [i for i in known if (i.size_bytes or 0) > 100 * 1024]
         over500 = [i for i in known if (i.size_bytes or 0) > 500 * 1024]
@@ -1237,37 +1240,64 @@ class ImageAnalyzer:
 
         if total_bytes:
             if total_bytes <= 300 * 1024:
-                e = 2.5
+                e = 2
                 msg = f"Total image weight {human_size(total_bytes)} - lean"
             elif total_bytes <= 1024 * 1024:
-                e = 1.9
+                e = 1.5
                 msg = f"Total image weight {human_size(total_bytes)} - reasonable"
             elif total_bytes <= 3 * 1024 * 1024:
-                e = 1.1
+                e = 0.9
                 msg = f"Total image weight {human_size(total_bytes)} - heavy"
             else:
                 e = 0
                 msg = f"Total image weight {human_size(total_bytes)} - excessive"
-            rec = "" if e >= 1.9 else "Lazy-load offscreen media, remove unused images, and enable CDN compression"
+            rec = "" if e >= 1.5 else "Lazy-load offscreen media, remove unused images, and enable CDN compression"
         else:
-            e = 1.25
+            e = 1
             msg = "Total image weight unknown"
             rec = "Configure Content-Length or image CDN reporting"
-        cat.add("Total image weight", e, 2.5, msg, rec)
+        cat.add("Total image weight", e, 2, msg, rec)
 
         page_total = self.page_bytes + total_bytes
         img_share = pct(total_bytes, page_total)
         if img_share <= 40:
-            e = 2
+            e = 1.5
             msg = f"Images are {img_share:.1f}% of page weight ({human_size(total_bytes)} of {human_size(page_total)})"
         elif img_share <= 65:
-            e = 1.2
+            e = 0.9
             msg = f"Images are {img_share:.1f}% of page weight - high share"
         else:
-            e = 0.4
+            e = 0.3
             msg = f"Images dominate the page at {img_share:.1f}% of total weight"
-        rec = "" if e >= 2 else "Reduce image payload; aim for images under 40% of total page weight"
-        cat.add("Image weight per page", e, 2, msg, rec)
+        rec = "" if e >= 1.5 else "Reduce image payload; aim for images under 40% of total page weight"
+        cat.add("Image weight per page", e, 1.5, msg, rec)
+
+        large_dims = []
+        for image in images:
+            nw = image.natural_width or 0
+            nh = image.natural_height or 0
+            try:
+                dw = int(image.width) if image.width else 0
+                dh = int(image.height) if image.height else 0
+            except (TypeError, ValueError):
+                dw = dh = 0
+            if max(nw, dw) >= 2000 or max(nh, dh) >= 2000:
+                large_dims.append(image)
+        if large_dims:
+            sample = large_dims[0]
+            dims = f"{sample.natural_width or sample.width}x{sample.natural_height or sample.height}"
+            e = 0.5
+            msg = f"{len(large_dims)} image(s) at 2000px+ (e.g. {dims}) - resize for delivery"
+            rec = "Resize images >=2000px via CDN transforms or responsive srcset variants"
+        elif any(i.natural_width or i.width for i in images):
+            e = 2
+            msg = "No images at or above 2000px intrinsic/display dimensions"
+            rec = ""
+        else:
+            e = 1
+            msg = "Intrinsic dimensions unknown (image bodies not inspected)"
+            rec = "Enable image probing so oversized dimensions can be detected"
+        cat.add("Large dimension detection (>=2000px)", e, 2, msg, rec)
         return cat
 
     def check_responsive(self):
@@ -1303,60 +1333,86 @@ class ImageAnalyzer:
         picture_pct = pct(len(in_picture), total)
         rec = ""
         if picture_pct >= 40:
-            e = 2
+            e = 1.5
             msg = f"<picture> used for {len(in_picture)} images ({picture_pct:.0f}%)"
         elif picture_pct > 0:
-            e = 1.2
+            e = 0.9
             msg = f"<picture> used for {picture_pct:.0f}% of images"
         elif with_srcset:
-            e = 1.0
+            e = 0.75
             msg = "No <picture> elements, but srcset provides responsive delivery"
             rec = "Use <picture> when format negotiation (AVIF/WebP fallback) is needed"
         else:
             e = 0
             msg = "No <picture> elements found"
             rec = "Wrap art-directed or format-negotiated images in <picture>"
-        if e >= 2:
+        if e >= 1.5:
             rec = ""
-        cat.add("picture element usage", e, 2, msg, rec)
+        cat.add("picture element usage", e, 1.5, msg, rec)
 
         sizes_pct = pct(len(with_sizes), total)
         rec = ""
         if sizes_pct >= 60:
-            e = 2
+            e = 1.5
             msg = f"sizes attribute on {sizes_pct:.0f}% of images"
         elif sizes_pct > 0:
-            e = 1.2
+            e = 0.9
             msg = f"sizes attribute only on {sizes_pct:.0f}% of images"
         elif not with_srcset:
-            e = 0.8
+            e = 0.6
             msg = "sizes not needed - no srcset present"
             rec = "Introduce srcset with sizes for responsive delivery"
         else:
-            e = 0.4
+            e = 0.3
             msg = "srcset present but sizes attribute missing on many images"
             rec = "Add sizes attributes so browsers pick the right srcset candidate"
-        if with_srcset and sizes_pct < 60 and e < 2:
+        if with_srcset and sizes_pct < 60 and e < 1.5:
             rec = rec or "Add sizes attributes to all srcset images"
-        elif e >= 2:
+        elif e >= 1.5:
             rec = ""
-        cat.add("sizes attribute usage", e, 2, msg, rec)
+        cat.add("sizes attribute usage", e, 1.5, msg, rec)
 
         dims_pct = pct(len(with_dims), total)
         if dims_pct >= 90:
-            e = 2.5
+            e = 2
             msg = f"width/height set on {dims_pct:.0f}% of images - layout stable"
         elif dims_pct >= 60:
-            e = 1.8
+            e = 1.4
             msg = f"width/height set on {dims_pct:.0f}% of images"
         elif dims_pct > 0:
-            e = 0.9
+            e = 0.7
             msg = f"width/height missing on many images ({dims_pct:.0f}% set)"
         else:
             e = 0
             msg = "No width/height attributes - layout shifts likely"
-        rec = "" if e >= 1.8 else "Add explicit width/height (or aspect-ratio) to prevent Cumulative Layout Shift"
-        cat.add("Width/height attributes", e, 2.5, msg, rec)
+        rec = "" if e >= 1.4 else "Add explicit width/height (or aspect-ratio) to prevent Cumulative Layout Shift"
+        cat.add("Width/height attributes", e, 2, msg, rec)
+
+        missing_intrinsic = [i for i in imgs if not (i.width and i.height)]
+        css_mismatch = 0
+        if self.soup is not None:
+            for tag in self.soup.find_all("img"):
+                style = tag.get("style") or ""
+                m = re.search(r"width\s*:\s*(\d+)px", style, re.I)
+                if m and tag.get("width"):
+                    try:
+                        if int(m.group(1)) != int(tag.get("width")):
+                            css_mismatch += 1
+                    except (TypeError, ValueError):
+                        pass
+        if css_mismatch:
+            e = 0.5
+            msg = f"{css_mismatch} image(s) with CSS display width differing from HTML width attribute"
+            rec = "Align CSS display size with the declared intrinsic width/height attributes"
+        elif missing_intrinsic:
+            e = 0.7
+            msg = f"{len(missing_intrinsic)}/{total} <img> missing intrinsic width/height dimensions"
+            rec = "Declare intrinsic width/height on every <img> so CSS sizing cannot drift"
+        else:
+            e = 1.5
+            msg = "All <img> elements declare intrinsic dimensions; no CSS/HTML width mismatch"
+            rec = ""
+        cat.add("Intrinsic dimensions & CSS match", e, 1.5, msg, rec)
 
         resp_pct = pct(len(responsive), total)
         if resp_pct >= 70:
@@ -1874,19 +1930,19 @@ class ImageAnalyzer:
 
         count = len(imgs)
         if count <= 15:
-            e = 2
+            e = 1.5
             msg = f"{count} images on page - light"
         elif count <= 30:
-            e = 1.4
+            e = 1.1
             msg = f"{count} images on page - moderate"
         elif count <= 50:
-            e = 0.8
+            e = 0.6
             msg = f"{count} images on page - heavy"
         else:
-            e = 0.2
+            e = 0.15
             msg = f"{count} images on page - excessive"
-        rec = "" if e >= 1.4 else "Trim decorative assets, sprite repeated icons, or paginate galleries"
-        cat.add("Image count per page", e, 2, msg, rec)
+        rec = "" if e >= 1.1 else "Trim decorative assets, sprite repeated icons, or paginate galleries"
+        cat.add("Image count per page", e, 1.5, msg, rec)
 
         total_bytes = sum(i.size_bytes or 0 for i in self.images if not i.is_data)
         data_bytes = sum(i.size_bytes or 0 for i in self.images if i.is_data)
@@ -1894,16 +1950,16 @@ class ImageAnalyzer:
         page_total = self.page_bytes + total_bytes
         share = pct(total_bytes, page_total)
         if share <= 35:
-            e = 2
+            e = 1.5
             msg = f"Images account for {share:.1f}% of page weight"
         elif share <= 55:
-            e = 1.3
+            e = 1
             msg = f"Images account for {share:.1f}% of page weight - high"
         else:
-            e = 0.4
+            e = 0.3
             msg = f"Images account for {share:.1f}% of page weight - dominant cost"
-        rec = "" if e >= 2 else "Cut image bytes: compress, resize, modern formats, CDN transforms"
-        cat.add("Image weight percentage of page", e, 2, msg, rec)
+        rec = "" if e >= 1.5 else "Cut image bytes: compress, resize, modern formats, CDN transforms"
+        cat.add("Image weight percentage of page", e, 1.5, msg, rec)
 
         fold = imgs[:min(3, len(imgs))]
         blocking = [
@@ -1972,6 +2028,26 @@ class ImageAnalyzer:
             msg = "Loading order not determinable"
             rec = ""
         cat.add("Image loading order", e, 1.5, msg, rec)
+
+        prefetch_hints = [
+            link for link in self.soup.find_all("link")
+            if "prefetch" in (link.get("rel") or "") and (link.get("as") or "") == "image"
+        ]
+        if preloads:
+            e = 1
+            msg = f"{len(preloads)} LCP hero preload hint(s) (link rel=preload as=image)"
+            if prefetch_hints:
+                msg += f"; {len(prefetch_hints)} image prefetch hint(s)"
+            rec = ""
+        elif prefetch_hints:
+            e = 0.5
+            msg = f"{len(prefetch_hints)} image prefetch hint(s) but no preload for the LCP hero"
+            rec = "Use rel=preload as=image for the LCP hero instead of prefetch"
+        else:
+            e = 0
+            msg = "No preload/prefetch hints for LCP hero images"
+            rec = "Add <link rel=preload as=image> for the LCP hero image"
+        cat.add("LCP hero preload/prefetch hints", e, 1, msg, rec)
         return cat
 
     def check_cdn(self):
@@ -2023,27 +2099,43 @@ class ImageAnalyzer:
         resize_pct = pct(len(resized), len(images))
         fmt_pct = pct(len(auto_fmt), len(images))
         if resize_pct >= 50 and fmt_pct >= 40:
-            e = 1.5
+            e = 1
             msg = f"On-the-fly transforms on {resize_pct:.0f}% of images; auto-format on {fmt_pct:.0f}%"
             rec = ""
         elif resized and auto_fmt:
-            e = 1.1
+            e = 0.7
             msg = f"CDN optimization partial (resize {resize_pct:.0f}%, auto-format {fmt_pct:.0f}%)"
             rec = "Add width/height/dpr and auto=format parameters to remaining image URLs"
         elif resized or auto_fmt:
-            e = 0.7
+            e = 0.5
             which = "resize parameters" if resized else "auto-format delivery"
             msg = f"{which} present ({max(resize_pct, fmt_pct):.0f}% of images) but incomplete"
             rec = "Combine on-the-fly resizing with auto format negotiation on your image CDN"
         elif cdn_hits:
-            e = 0.4
+            e = 0.3
             msg = "CDN present but no on-the-fly transform or auto-format parameters observed"
             rec = "Enable edge resizing and format negotiation (f_auto / auto=format) on the CDN"
         else:
             e = 0
             msg = "No image CDN optimization signals detected"
             rec = "Use an image CDN with on-the-fly resize and automatic format delivery"
-        cat.add("Image CDN optimization", e, 1.5, msg, rec)
+        cat.add("Image CDN optimization", e, 1, msg, rec)
+
+        modern_tf = [i for i in images if i.has_resize_param or i.has_auto_format]
+        modern_pct = pct(len(modern_tf), len(images))
+        if modern_pct >= 50:
+            e = 1
+            msg = f"Modern CDN transform params (w/h/q/fm/auto=format/dpr) on {modern_pct:.0f}% of images"
+            rec = ""
+        elif modern_pct > 0:
+            e = 0.6
+            msg = f"Modern transform params on {len(modern_tf)}/{len(images)} images ({modern_pct:.0f}%)"
+            rec = "Extend w/h/q/fm/auto=format/dpr params across all image URLs"
+        else:
+            e = 0
+            msg = "No modern CDN image transform parameters (w=, h=, q=, fm=, auto=format, dpr=)"
+            rec = "Add w, h, q, fm and dpr parameters so the CDN resizes and re-encodes at the edge"
+        cat.add("Modern CDN transform parameters", e, 1, msg, rec)
 
         encoding = [i for i in images if i.content_encoding]
         compress_signals = encoding[:]
@@ -2053,24 +2145,24 @@ class ImageAnalyzer:
             if image.fmt in ("svg",) and image.fetch_ok:
                 compress_signals.append(image)
         if encoding:
-            e = 1.5
+            e = 1
             msg = f"Content-Encoding observed on {len(encoding)} image response(s)"
             rec = ""
         elif compress_signals:
-            e = 1.0
+            e = 0.7
             msg = "CDN/edge delivery signals present (varnish/edge caching headers)"
             rec = "Verify Accept-Encoding negotiation for SVG/text-like images"
         else:
             probed_count = len([i for i in images if i.fetch_ok])
             if probed_count:
-                e = 0.5
+                e = 0.3
                 msg = "No compression or edge headers on image responses"
                 rec = "Enable gzip/brotli for SVG and ensure CDN compresses transfer encoding"
             else:
-                e = 0.75
+                e = 0.5
                 msg = "Image responses not probed for compression headers"
                 rec = "Enable transfer compression at the CDN/origin for image endpoints"
-        cat.add("Image compression headers", e, 1.5, msg, rec)
+        cat.add("Image compression headers", e, 1, msg, rec)
         return cat
 
     def check_caching(self):

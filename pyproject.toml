@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cs-tools"
+version = "1.1.0"
+description = "CS Tools - Comprehensive Website Measurement & Analysis Toolkit (19 tools)"
+readme = "README.md"
+requires-python = ">=3.7"
+license = { text = "MIT" }
+authors = [{ name = "tahsan2544" }]
+keywords = [
+  "seo", "security", "performance", "uptime", "accessibility",
+  "web-analysis", "load-testing", "monitoring", "gdpr", "cdn",
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Internet :: WWW/HTTP",
+  "Topic :: Security",
+]
+dependencies = [
+  "requests>=2.31.0",
+  "beautifulsoup4>=4.12.0",
+  "colorama>=0.4.6",
+  "aiohttp>=3.9.0",
+  "websockets>=12.0",
+  "dnspython>=2.4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/tahsan2544/CS-tool"
+Repository = "https://github.com/tahsan2544/CS-tool"
+Issues = "https://github.com/tahsan2544/CS-tool/issues"
+Changelog = "https://github.com/tahsan2544/CS-tool/blob/Default-Branch/CHANGELOG.md"
+
+[project.scripts]
+cstools = "cstools:main"
+
+[tool.setuptools]
+py-modules = ["cstools"]
