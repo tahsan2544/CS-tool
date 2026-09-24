@@ -3,6 +3,25 @@
 All notable changes to CS-Tool are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning: [SemVer](https://semver.org/) where practical; individual tools keep their own `VERSION` strings.
 
+## [1.3.0] — overall site rating + what-to-do at end of scan
+
+### Added
+- **End-of-scan `OVERALL SITE RATING`**: weighted 0–100 score across all 16 scored tools (`SCORE_WEIGHTS` sums to 100), letter grade, distance to A, coverage (tools scored + weight covered)
+- **`WHAT TO DO` table** printed automatically at the end of `scan` (no second command): per-area gap to 90, weighted rating gain, effort, priority, first fix drawn from live tool issues
+- Quick wins (Low effort first) + biggest rating moves + projected overall if the list is fixed
+- Normalized every tool's raw score to /100 via `normalize_score_100` (handles `201/563`, decimals, percent)
+- Scan JSON export now includes `overall_rating`, `overall_grade`, `scored_tools`, `scores_normalized`, `what_to_do`, and previously missing `html_*`/`cdn_*`/`cookies_*` score+grade fields
+
+### Changed
+- All 17 scan tool runners use `_run_capture` with a **180s timeout** (per-tool hangs no longer stall the whole scan; timed-out tools report rc 124)
+- `UpgradeAdvisor` v1.0 → **v1.1**: same ANSI-stripping + real score patterns as the unified CLI; weights aligned to sum 100
+
+### Fixed
+- Score extraction strips ANSI and matches each tool's real final score/grade format (SEO ratio, bar meters, decimal composites, etc.)
+
+### Bumped
+- Package version `1.2.0` → `1.3.0` (setup.py, pyproject.toml)
+
 ## [1.2.0] — CS-Tool rebrand + CLI UI refresh
 
 ### Changed

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-UpgradeAdvisor v1.0 — What to upgrade on your website for a better rating.
+UpgradeAdvisor v1.1 — What to upgrade on your website for a better rating.
 
 Runs the CS-Tool suite, aggregates every tool's score into one overall
 site rating, then produces a prioritized upgrade roadmap: what to fix,
@@ -26,7 +26,7 @@ except ImportError:
         def __getattr__(self, n): return ''
     Fore = Style = _Fake()
 
-VERSION = "UpgradeAdvisor v1.0"
+VERSION = "UpgradeAdvisor v1.1"
 
 # name, command label, script path relative to ROOT, arg style
 TOOLS = [
@@ -52,9 +52,8 @@ TOOLS = [
 # Each: list of (regex, denominator_or_None_for_percent)
 SCORE_PATTERNS = {
     "seo": [
-        (r"Final Score:\s*[A-F]?[\d.]+/(\d+)", None),   # captured later with value
         (r"Final Score:\s*[A-F]?(\d+)/(\d+)", None),
-        (r"OVERALL\s+█+\s*(\d+)%", None),
+        (r"OVERALL\s+[█░]+\s*(\d+)%", None),
     ],
     "security": [
         (r"Overall Score:\s*(\d+)/100", None),
@@ -62,9 +61,9 @@ SCORE_PATTERNS = {
     ],
     "perf": [
         (r"PERFORMANCE SCORE\s*\n?.*?(\d+(?:\.\d+)?)\s*/\s*100", None),
-        (r"Lighthouse\s+█+\s*(\d+)/100", None),
+        (r"Lighthouse\s+[█░]+\s*(\d+)/100", None),
         (r"Lighthouse Score \(simulated\)\s+(\d+)/100", None),
-        (r"Score:\s*(\d+)/100", None),
+        (r"Score:\s*[^\d]*(\d+)/100", None),
     ],
     "uptime": [
         (r"Avg Score:\s*(\d+)/100", None),
@@ -75,8 +74,8 @@ SCORE_PATTERNS = {
         (r"Score:\s*(\d+)/100", None),
     ],
     "content": [
-        (r"TOTAL\s+█+\s*([\d.]+)/(\d+)", None),
-        (r"Overall\s+█+\s*([\d.]+)/(\d+)", None),
+        (r"TOTAL\s+[█░]+\s*([\d.]+)/(\d+)", None),
+        (r"Overall\s+[█░]+\s*([\d.]+)/(\d+)", None),
         (r"Score:\s*([\d.]+)/(\d+)", None),
     ],
     "network": [
@@ -110,11 +109,11 @@ SCORE_PATTERNS = {
     ],
     "sitemap": [
         (r"SCORE:\s*(\d+(?:\.\d+)?)\s*/\s*100", None),
-        (r"TOTAL\s+█+\s*(\d+(?:\.\d+)?)/100", None),
+        (r"TOTAL\s+[^\d]*([\d.]+)/100", None),
         (r"Score:\s*(\d+(?:\.\d+)?)/100", None),
     ],
     "html": [
-        (r"TOTAL\s+█+\s*(\d+)/100", None),
+        (r"TOTAL\s+[^\d]*([\d.]+)/100", None),
         (r"Score:\s*(\d+)/100", None),
     ],
     "cdn": [
@@ -127,9 +126,9 @@ SCORE_PATTERNS = {
     ],
 }
 
-# Relative weights for the overall site rating (sum ≈ 100)
+# Relative weights for the overall site rating (sum = 100)
 WEIGHTS = {
-    "seo": 12, "security": 12, "perf": 12, "uptime": 4, "mobile": 8,
+    "seo": 13, "security": 13, "perf": 13, "uptime": 4, "mobile": 8,
     "content": 8, "network": 5, "access": 7, "image": 4, "api": 4,
     "video": 3, "schema": 6, "sitemap": 4, "html": 3, "cdn": 3, "cookies": 2,
 }
@@ -183,8 +182,9 @@ def parse_score(tool_key, output):
     """Return (score_0_to_100, raw_matched_text) or (None, None)."""
     if not output:
         return None, None
+    plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output)
     for regex, _ in SCORE_PATTERNS.get(tool_key, []):
-        m = re.search(regex, output, re.IGNORECASE | re.MULTILINE)
+        m = re.search(regex, plain, re.IGNORECASE | re.MULTILINE)
         if not m:
             continue
         groups = m.groups()
@@ -206,7 +206,7 @@ def parse_score(tool_key, output):
         except (ValueError, IndexError):
             continue
     # grade-only fallback
-    m = re.search(r"\bGrade:\s*([A-F][+-]?)", output, re.IGNORECASE)
+    m = re.search(r"\bGrade:\s*([A-F][+-]?)", plain, re.IGNORECASE)
     if m:
         g = m.group(1).upper()
         mapping = {"A+": 97, "A": 93, "B": 82, "C": 74, "D": 65, "F": 30}

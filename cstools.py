@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 
 APP_NAME = "CS-Tool"
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.3.0"
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOADSTORM = os.path.join(SCRIPT_DIR, "LoadStorm", "loadstorm.py")
@@ -670,6 +670,239 @@ def extract_score_from_output(pattern, output):
     return None
 
 
+# Weights for the overall site rating (same scale as UpgradeAdvisor; sum = 100).
+SCORE_WEIGHTS = {
+    "seo": 13, "security": 13, "perf": 13, "uptime": 4, "mobile": 8,
+    "content": 8, "network": 5, "access": 7, "image": 4, "api": 4,
+    "video": 3, "schema": 6, "sitemap": 4, "html": 3, "cdn": 3, "cookies": 2,
+}
+
+
+def _run_capture(cmd, timeout=180):
+    """Run a sub-tool with a hard timeout so one hang cannot stall the scan."""
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        class _TimedOut:
+            stdout = f"[ERROR] tool timed out after {timeout}s"
+            stderr = ""
+            returncode = 124
+        return _TimedOut()
+    except OSError as exc:
+        class _Failed:
+            stdout = f"[ERROR] {exc}"
+            stderr = str(exc)
+            returncode = 1
+        return _Failed()
+
+
+def normalize_score_100(raw):
+    """Coerce a tool score string to a float in 0–100, or None.
+
+    Accepts "72", "30.6", "201/563", "201/563 (36%)".
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        v = float(raw)
+        return round(v, 1) if 0.0 <= v <= 100.0 else None
+    s = str(raw).strip()
+    if not s:
+        return None
+    m = re.match(r"^([0-9]+(?:\.[0-9]+)?)\s*/\s*([0-9]+(?:\.[0-9]+)?)", s)
+    if m:
+        num, den = float(m.group(1)), float(m.group(2))
+        if den <= 0:
+            return None
+        return round(num / den * 100.0, 1)
+    m = re.match(r"^([0-9]+(?:\.[0-9]+)?)\s*%?", s)
+    if m:
+        v = float(m.group(1))
+        if 0.0 <= v <= 100.0:
+            return round(v, 1)
+    return None
+
+
+def grade_for_score(score):
+    if score is None:
+        return "?"
+    if score >= 95:
+        return "A+"
+    if score >= 90:
+        return "A"
+    if score >= 80:
+        return "B"
+    if score >= 70:
+        return "C"
+    if score >= 60:
+        return "D"
+    return "F"
+
+
+def color_for_score(score):
+    if score is None:
+        return C["dim"]
+    if score >= 90:
+        return C["ok"]
+    if score >= 70:
+        return C["warn"]
+    if score >= 50:
+        return Fore.LIGHTRED_EX
+    return C["bad"]
+
+
+def score_bar(score, width=24):
+    if score is None:
+        return "·" * width
+    filled = int(round(max(0.0, min(100.0, score)) / 100.0 * width))
+    return "█" * filled + "░" * (width - filled)
+
+
+def overall_rating(score_map):
+    """Weighted overall 0–100 using only tools that produced a score."""
+    acc, total_w = 0.0, 0
+    for key, weight in SCORE_WEIGHTS.items():
+        sc = score_map.get(key)
+        if sc is None:
+            continue
+        acc += sc * weight
+        total_w += weight
+    if total_w == 0:
+        return None, 0
+    return round(acc / total_w, 1), total_w
+
+
+def _plain_output(text):
+    if not text:
+        return ""
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", text)
+
+
+def extract_issues(text, limit=3):
+    """Pull top CRITICAL/HIGH/MEDIUM issue lines from a tool's output."""
+    plain = _plain_output(text)
+    if not plain:
+        return []
+    patterns = (
+        r"\[(?:CRITICAL|HIGH|MEDIUM)\]\s*(.+)",
+        r"^\s*\d+\.\s*\[(?:CRITICAL|HIGH|MEDIUM)\]\s*(.+)",
+        r"^\s*(?:FAIL|MISSING)\s*[:\-]\s*(.+)",
+    )
+    found, seen = [], set()
+    for pat in patterns:
+        for m in re.finditer(pat, plain, re.IGNORECASE | re.MULTILINE):
+            text_i = " ".join(m.group(1).split())[:140]
+            key = text_i.lower()
+            if key in seen or len(text_i) < 12:
+                continue
+            seen.add(key)
+            found.append(text_i)
+            if len(found) >= limit:
+                return found
+    return found
+
+
+def build_what_to_do(score_map, issues_map):
+    """Prioritized fix list: biggest weighted gain toward a 90 overall first."""
+    items = []
+    for key, sc in score_map.items():
+        if sc is None:
+            continue
+        gap = max(0.0, 90.0 - sc)
+        if gap <= 0:
+            continue
+        weight = SCORE_WEIGHTS.get(key, 3) / 100.0
+        impact = round(gap * weight, 1)
+        if gap >= 50:
+            effort = "High"
+        elif gap >= 25:
+            effort = "Medium"
+        else:
+            effort = "Low"
+        effort_cost = {"Low": 1, "Medium": 2, "High": 4}[effort]
+        items.append({
+            "tool": key,
+            "score": sc,
+            "grade": grade_for_score(sc),
+            "gap": round(gap, 1),
+            "impact": impact,
+            "effort": effort,
+            "priority": round(impact / effort_cost, 2),
+            "issues": issues_map.get(key, [])[:3],
+        })
+    items.sort(key=lambda x: (-x["priority"], -x["impact"]))
+    return items
+
+
+def print_overall_and_what_to_do(url, score_map, issues_map, coverage_total=16):
+    """Final section of scan: overall rating + what to do (no extra command)."""
+    overall, weight_covered = overall_rating(score_map)
+    roadmap = build_what_to_do(score_map, issues_map)
+    scored = sum(1 for v in score_map.values() if v is not None)
+
+    print(f"\n{C['brand']}{'═' * 70}{C['reset']}")
+    print(f"{C['brand']}{Style.BRIGHT}  OVERALL SITE RATING{C['reset']}")
+    print(f"{C['brand']}{'═' * 70}{C['reset']}")
+    print(f"  {C['desc']}Target:{C['reset']}   {_dim(url)}")
+    print(f"  {C['desc']}Coverage:{C['reset']} {_dim(f'{scored}/{coverage_total} tools scored · weight {weight_covered}/100')}")
+    if overall is None:
+        print(f"  {C['bad']}  No scores available — overall rating cannot be computed.{C['reset']}")
+    else:
+        gc = color_for_score(overall)
+        print(f"\n  {C['desc']}Overall:{C['reset']}   {gc}{Style.BRIGHT}{overall:.1f} / 100   Grade {grade_for_score(overall)}{C['reset']}")
+        print(f"           {gc}{score_bar(overall, 40)}  {overall:.0f}%{C['reset']}")
+        dist = max(0.0, round(90.0 - overall, 1))
+        if dist > 0:
+            print(f"  {C['desc']}Distance to A (90):{C['reset']} {C['warn']}{dist} points{C['reset']}")
+        else:
+            print(f"  {C['desc']}Distance to A (90):{C['reset']} {C['ok']}at or above A threshold{C['reset']}")
+
+    print(f"\n{C['gold']}{Style.BRIGHT}  WHAT TO DO (prioritized — biggest rating gain first){C['reset']}")
+    print(f"{C['rule']}{Style.DIM}{'─' * 70}{C['reset']}")
+    if not roadmap:
+        print(f"  {C['ok']}Nothing critical — every scored area is at 90+.{C['reset']}")
+        print(f"  {C['dim']}Optional: re-run periodically with: python cstools.py scan -u <url>{C['reset']}")
+        return overall
+
+    print(f"  {C['head']}{'#':<4}{'Area':<12}{'Now':>6}{'Grade':>6}  {'Gain':>6}  {'Effort':<8}{'Pri':>6}  First fix{C['reset']}")
+    print(f"  {C['rule']}{Style.DIM}{'─' * 70}{C['reset']}")
+    for i, it in enumerate(roadmap, 1):
+        gc = color_for_score(it["score"])
+        ec = C["ok"] if it["effort"] == "Low" else (C["warn"] if it["effort"] == "Medium" else C["bad"])
+        why = it["issues"][0][:52] if it["issues"] else "close score gap to 90"
+        print(
+            f"  {i:<4}{it['tool']:<12}"
+            f"{gc}{it['score']:>5.1f}{C['reset']} "
+            f"{gc}{it['grade']:>5}{C['reset']}  "
+            f"{C['ok']}+{it['impact']:>5.1f}{C['reset']}  "
+            f"{ec}{it['effort']:<8}{C['reset']}"
+            f"{gc}{it['priority']:>5.2f}{C['reset']}  "
+            f"{C['desc']}{why}{C['reset']}"
+        )
+        for iss in it["issues"][:2]:
+            print(f"      {C['dim']}· {iss}{C['reset']}")
+
+    quick = [it for it in roadmap if it["effort"] == "Low"]
+    if quick:
+        print(f"\n  {C['ok']}{Style.BRIGHT}  QUICK WINS (do these first){C['reset']}")
+        for it in quick[:5]:
+            print(f"    {C['ok']}+{C['reset']} {it['tool']}: {it['score']:.0f} → +{it['impact']:.1f} overall if brought to 90")
+
+    big = sorted(roadmap, key=lambda x: -x["impact"])[:3]
+    print(f"\n  {C['gold']}{Style.BRIGHT}  BIGGEST RATING MOVES{C['reset']}")
+    for it in big:
+        print(f"    {C['gold']}▸{C['reset']} {it['tool']}: +{it['impact']:.1f} overall  (now {it['score']:.0f}, {it['effort']} effort)")
+
+    total_potential = round(sum(it["impact"] for it in roadmap), 1)
+    base = overall if overall is not None else 0.0
+    projected = round(min(97.0, base + total_potential * 0.7), 1)
+    print(f"\n  {C['accent']}{Style.BRIGHT}  POTENTIAL:{C['reset']} fixing the list above ≈ +{total_potential} weighted points")
+    print(f"  {C['accent']}  Projected overall if fixed:{C['reset']} {color_for_score(projected)}{projected:.1f} ({grade_for_score(projected)}){C['reset']}")
+    print(f"  {C['dim']}  Order matters: work top-down in the table. No second command needed.{C['reset']}")
+    print(f"{C['brand']}{'═' * 70}{C['reset']}\n")
+    return overall
+
+
 def cmd_scan(args):
     url = args.url
     if not url:
@@ -690,10 +923,7 @@ def cmd_scan(args):
         seo_args += ["--export", export]
     if args.no_color:
         seo_args.append("--no-color")
-    seo_result = subprocess.run(
-        [sys.executable, SEO] + seo_args,
-        capture_output=True, text=True
-    )
+    seo_result = _run_capture([sys.executable, SEO] + seo_args)
     # SEO prints "Final Score: D201/563" (score is not /100) and grade letter
     # on OVERALL / Grade lines. Prefer those over per-check "Score: 5/8".
     seo_output = seo_result.stdout
@@ -716,10 +946,7 @@ def cmd_scan(args):
         sec_args += ["--export", export]
     if args.no_color:
         sec_args.append("--no-color")
-    sec_result = subprocess.run(
-        [sys.executable, SECURITY] + sec_args,
-        capture_output=True, text=True
-    )
+    sec_result = _run_capture([sys.executable, SECURITY] + sec_args)
     sec_output = sec_result.stdout
     sec_score = extract_score_from_output(r'Score:\s*(\d+)/100', sec_output)
     sec_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', sec_output)
@@ -736,10 +963,7 @@ def cmd_scan(args):
         perf_args += ["--export", export]
     if args.no_color:
         perf_args.append("--no-color")
-    perf_result = subprocess.run(
-        [sys.executable, PERF] + perf_args,
-        capture_output=True, text=True
-    )
+    perf_result = _run_capture([sys.executable, PERF] + perf_args)
     perf_output = perf_result.stdout
     # PerfAnalyzer prints "Score: ███ 72/100" — bar chart sits between label and number.
     perf_score = extract_score_from_output(r'Score:\s*[^\d]*(\d+)/100', perf_output)
@@ -757,10 +981,7 @@ def cmd_scan(args):
         uptime_args += ["--export", export]
     if args.no_color:
         uptime_args.append("--no-color")
-    uptime_result = subprocess.run(
-        [sys.executable, UPTIME] + uptime_args,
-        capture_output=True, text=True
-    )
+    uptime_result = _run_capture([sys.executable, UPTIME] + uptime_args)
     uptime_output = uptime_result.stdout
     uptime_score = extract_score_from_output(r'Avg Score:\s*(\d+)/100', uptime_output)
     if not uptime_score:
@@ -779,10 +1000,7 @@ def cmd_scan(args):
         mobile_args += ["--export", export]
     if args.no_color:
         mobile_args.append("--no-color")
-    mobile_result = subprocess.run(
-        [sys.executable, MOBILE] + mobile_args,
-        capture_output=True, text=True
-    )
+    mobile_result = _run_capture([sys.executable, MOBILE] + mobile_args)
     mobile_output = mobile_result.stdout
     mobile_score = extract_score_from_output(r'Mobile Readiness Score:\s*([\d.]+)%', mobile_output)
     if not mobile_score:
@@ -803,10 +1021,7 @@ def cmd_scan(args):
         content_args += ["--export", export]
     if args.no_color:
         content_args.append("--no-color")
-    content_result = subprocess.run(
-        [sys.executable, CONTENT] + content_args,
-        capture_output=True, text=True
-    )
+    content_result = _run_capture([sys.executable, CONTENT] + content_args)
     content_output = content_result.stdout
     # Prefer dashboard overall percent (score already /100); avoid subscore "Score: 0/100" matches.
     content_score = extract_score_from_output(r'Overall\s+\[[^\]]*\]\s+[\d.]+/\d+\s+\(([\d.]+)%\)', content_output)
@@ -828,10 +1043,7 @@ def cmd_scan(args):
         network_args += ["--export", export]
     if args.no_color:
         network_args.append("--no-color")
-    network_result = subprocess.run(
-        [sys.executable, NETWORK] + network_args,
-        capture_output=True, text=True
-    )
+    network_result = _run_capture([sys.executable, NETWORK] + network_args)
     network_output = network_result.stdout
     network_score = extract_score_from_output(r'Network Score:\s*(\d+)/100', network_output)
     if not network_score:
@@ -852,10 +1064,7 @@ def cmd_scan(args):
         access_args += ["--export", export]
     if args.no_color:
         access_args.append("--no-color")
-    access_result = subprocess.run(
-        [sys.executable, ACCESS] + access_args,
-        capture_output=True, text=True
-    )
+    access_result = _run_capture([sys.executable, ACCESS] + access_args)
     access_output = access_result.stdout
     access_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', access_output)
     if not access_score:
@@ -878,10 +1087,7 @@ def cmd_scan(args):
         image_args += ["--export", export]
     if args.no_color:
         image_args.append("--no-color")
-    image_result = subprocess.run(
-        [sys.executable, IMAGE] + image_args,
-        capture_output=True, text=True
-    )
+    image_result = _run_capture([sys.executable, IMAGE] + image_args)
     image_output = image_result.stdout
     image_score = extract_score_from_output(r'TOTAL SCORE:\s*([\d.]+)\s*/\s*100', image_output)
     if not image_score:
@@ -900,10 +1106,7 @@ def cmd_scan(args):
         api_args += ["--export", export]
     if args.no_color:
         api_args.append("--no-color")
-    api_result = subprocess.run(
-        [sys.executable, API] + api_args,
-        capture_output=True, text=True
-    )
+    api_result = _run_capture([sys.executable, API] + api_args)
     api_output = api_result.stdout
     api_score = extract_score_from_output(r'TOTAL:\s*([\d.]+)\s*/\s*100', api_output)
     if not api_score:
@@ -922,10 +1125,7 @@ def cmd_scan(args):
         video_args += ["--export", export]
     if args.no_color:
         video_args.append("--no-color")
-    video_result = subprocess.run(
-        [sys.executable, VIDEO] + video_args,
-        capture_output=True, text=True
-    )
+    video_result = _run_capture([sys.executable, VIDEO] + video_args)
     video_output = video_result.stdout
     # TOTAL SCORE is out of 163; use overall percent for a /100-compatible score.
     video_score = extract_score_from_output(r'Overall\s+(\d+)%', video_output)
@@ -947,10 +1147,7 @@ def cmd_scan(args):
         schema_args += ["--export", export]
     if args.no_color:
         schema_args.append("--no-color")
-    schema_result = subprocess.run(
-        [sys.executable, SCHEMA] + schema_args,
-        capture_output=True, text=True
-    )
+    schema_result = _run_capture([sys.executable, SCHEMA] + schema_args)
     schema_output = schema_result.stdout
     schema_score = extract_score_from_output(r'TOTAL\s+([\d.]+)\s+\d+\s+[\d.]+%', schema_output)
     if not schema_score:
@@ -969,10 +1166,7 @@ def cmd_scan(args):
         email_args += ["--export", export]
     if args.no_color:
         email_args.append("--no-color")
-    email_result = subprocess.run(
-        [sys.executable, EMAIL] + email_args,
-        capture_output=True, text=True
-    )
+    email_result = _run_capture([sys.executable, EMAIL] + email_args)
     email_output = email_result.stdout
     email_score = extract_score_from_output(r'DELIVERABILITY SCORE\s*:\s*([\d.]+)\s*/\s*100', email_output)
     if not email_score:
@@ -993,10 +1187,7 @@ def cmd_scan(args):
         sitemap_args += ["--export", export]
     if args.no_color:
         sitemap_args.append("--no-color")
-    sitemap_result = subprocess.run(
-        [sys.executable, SITEMAP] + sitemap_args,
-        capture_output=True, text=True
-    )
+    sitemap_result = _run_capture([sys.executable, SITEMAP] + sitemap_args)
     sitemap_output = sitemap_result.stdout
     sitemap_score = extract_score_from_output(r'TOTAL\s+.*?([\d.]+)/100', sitemap_output)
     if not sitemap_score:
@@ -1017,10 +1208,7 @@ def cmd_scan(args):
         html_args += ["--export", export]
     if args.no_color:
         html_args.append("--no-color")
-    html_result = subprocess.run(
-        [sys.executable, HTMLV] + html_args,
-        capture_output=True, text=True
-    )
+    html_result = _run_capture([sys.executable, HTMLV] + html_args)
     html_output = html_result.stdout
     html_score = extract_score_from_output(r'TOTAL\s+.*?([\d.]+)/100', html_output) or extract_score_from_output(r'Score:\s*([\d.]+)/100', html_output)
     html_grade = extract_score_from_output(r'GRADE:\s*([A-F][+-]?)', html_output) or extract_score_from_output(r'Grade:\s*([A-F][+-]?)', html_output)
@@ -1037,10 +1225,7 @@ def cmd_scan(args):
         cdn_args += ["--export", export]
     if args.no_color:
         cdn_args.append("--no-color")
-    cdn_result = subprocess.run(
-        [sys.executable, CDN] + cdn_args,
-        capture_output=True, text=True
-    )
+    cdn_result = _run_capture([sys.executable, CDN] + cdn_args)
     cdn_output = cdn_result.stdout
     cdn_score = extract_score_from_output(r'TOTAL:\s*([\d.]+)\s*/\s*100', cdn_output)
     if not cdn_score:
@@ -1059,10 +1244,7 @@ def cmd_scan(args):
         cookies_args += ["--export", export]
     if args.no_color:
         cookies_args.append("--no-color")
-    cookies_result = subprocess.run(
-        [sys.executable, COOKIES] + cookies_args,
-        capture_output=True, text=True
-    )
+    cookies_result = _run_capture([sys.executable, COOKIES] + cookies_args)
     cookies_output = cookies_result.stdout
     cookies_score = extract_score_from_output(r'Total Score:\s*([\d.]+)/100', cookies_output)
     if not cookies_score:
@@ -1270,12 +1452,59 @@ def cmd_scan(args):
 
     print(f"\n{Fore.CYAN}{'='*70}{Style.RESET_ALL}")
 
+    # Normalize every tool score to 0–100 (handles ratios like SEO 201/563).
+    score_map = {
+        "seo": normalize_score_100(seo_score),
+        "security": normalize_score_100(sec_score),
+        "perf": normalize_score_100(perf_score),
+        "uptime": normalize_score_100(uptime_score),
+        "mobile": normalize_score_100(mobile_score),
+        "content": normalize_score_100(content_score),
+        "network": normalize_score_100(network_score),
+        "access": normalize_score_100(access_score),
+        "image": normalize_score_100(image_score),
+        "api": normalize_score_100(api_score),
+        "video": normalize_score_100(video_score),
+        "schema": normalize_score_100(schema_score),
+        "sitemap": normalize_score_100(sitemap_score),
+        "html": normalize_score_100(html_score),
+        "cdn": normalize_score_100(cdn_score),
+        "cookies": normalize_score_100(cookies_score),
+    }
+    issues_map = {
+        "seo": extract_issues(seo_output, 3),
+        "security": extract_issues(sec_output, 3),
+        "perf": extract_issues(perf_output, 3),
+        "uptime": extract_issues(uptime_output, 2),
+        "mobile": extract_issues(mobile_output, 3),
+        "content": extract_issues(content_output, 3),
+        "network": extract_issues(network_output, 3),
+        "access": extract_issues(access_output, 3),
+        "image": extract_issues(image_output, 3),
+        "api": extract_issues(api_output, 3),
+        "video": extract_issues(video_output, 3),
+        "schema": extract_issues(schema_output, 3),
+        "sitemap": extract_issues(sitemap_output, 3),
+        "html": extract_issues(html_output, 3),
+        "cdn": extract_issues(cdn_output, 3),
+        "cookies": extract_issues(cookies_output, 3),
+    }
+    overall = print_overall_and_what_to_do(url, score_map, issues_map, coverage_total=16)
+    roadmap = build_what_to_do(score_map, issues_map)
+
     if export and export != "none":
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         combined = {
             "scan_type": "full",
+            "app": APP_NAME,
+            "app_version": APP_VERSION,
             "target_url": url,
             "timestamp": datetime.now().isoformat(),
+            "overall_rating": overall,
+            "overall_grade": grade_for_score(overall),
+            "scored_tools": sum(1 for v in score_map.values() if v is not None),
+            "scores_normalized": score_map,
+            "what_to_do": roadmap,
             "seo_score": seo_score,
             "security_score": sec_score,
             "security_grade": sec_grade,
@@ -1305,6 +1534,12 @@ def cmd_scan(args):
             "email_grade": email_grade,
             "sitemap_score": sitemap_score,
             "sitemap_grade": sitemap_grade,
+            "html_score": html_score,
+            "html_grade": html_grade,
+            "cdn_score": cdn_score,
+            "cdn_grade": cdn_grade,
+            "cookies_score": cookies_score,
+            "cookies_grade": cookies_grade,
         }
         report_file = f"combined_report_{ts}.json"
         with open(report_file, "w") as f:

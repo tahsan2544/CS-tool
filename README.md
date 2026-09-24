@@ -42,7 +42,7 @@
 
 ## 🎯 Overview
 
-CS-Tool is a unified suite of **19 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS-Tool provides everything you need to measure, audit, and optimize any website.
+CS-Tool is a unified suite of **19 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS-Tool provides everything you need to measure, audit, and optimize any website. Every full `scan` ends with a weighted **overall site rating** and a prioritized **what-to-do** list drawn from live tool issues.
 
 ### What Can You Analyze?
 
@@ -302,9 +302,20 @@ python cstools.py scan -u https://example.com --export all
 ==========================================
          COMBINED SCAN RESULTS
 ==========================================
+
+==========================================
+       OVERALL SITE RATING
+==========================================
+  Overall:  48.3 / 100  Grade F
+  Coverage: 15/16 tools scored · weight 95/100
+  Distance to A (90): 41.7 points
+
+  WHAT TO DO (prioritized — biggest rating gain first)
+  ...
+  QUICK WINS / BIGGEST RATING MOVES / Projected overall if fixed
 ```
 
-> LoadStorm is intentionally excluded from `scan` (it generates traffic). Run it separately with `cstools loadstorm`. Use `cstools upgrade` after a scan to get the prioritized improvement roadmap.
+> LoadStorm is intentionally excluded from `scan` (it generates traffic). Run it separately with `cstools loadstorm`. After every scan the CLI prints **OVERALL SITE RATING** + **WHAT TO DO** (prioritized fixes). Use `cstools upgrade` to re-run only the aggregation/roadmap path.
 
 ---
 
