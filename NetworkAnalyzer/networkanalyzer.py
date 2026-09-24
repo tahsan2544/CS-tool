@@ -5518,49 +5518,117 @@ class NetworkAnalyzer:
 
         return html
 
-    def run(self):
+    def run(self, max_seconds=100):
         print_banner(self.colors)
 
         self._log(f"Starting analysis of {self.url}", "info")
         self._log(f"Domain: {self.domain}, Port: {self.port}", "info")
 
-        self.analyze_dns()
-        self.analyze_tcp()
-        self.analyze_ssl()
-        self.analyze_http()
-        self.analyze_cdn()
-        self.analyze_fingerprint()
-        self.analyze_latency()
-        self.analyze_bandwidth()
-        self.analyze_netsec()
-        self.analyze_protocols()
-        self.analyze_ipv6()
-        self.analyze_routing()
-        self.analyze_congestion()
-        self.analyze_pmtu()
-        self.analyze_security_audit()
-        self.analyze_encryption()
-        self.analyze_cert_chain()
-        self.analyze_protocol_security()
-        self.analyze_port_security()
-        self.analyze_reliability()
-        self.analyze_scalability()
-        self.analyze_resilience()
-        self.analyze_quic()
-        self.analyze_tls13_optimization()
-        self.analyze_tcp_fast_open()
-        self.analyze_connection_coalescing()
-        self.analyze_priority_headers()
-        self.refine_network_analysis()
+        class _BudgetExceeded(BaseException):
+            """BaseException so analyzer `except Exception` blocks cannot swallow it."""
 
-        self.calculate_refined_scores()
-        self.build_recommendations()
+        def _on_alarm(signum, frame):
+            raise _BudgetExceeded()
 
-        self.print_summary()
-        self.print_topology()
-        self.print_performance_dashboard()
-        self.print_security_report()
-        self.print_recommendations()
+        deadline = time.time() + max_seconds
+        prev_handler = None
+        try:
+            import signal
+            prev_handler = signal.signal(signal.SIGALRM, _on_alarm)
+            signal.setitimer(signal.ITIMER_REAL, max_seconds)
+        except (ValueError, OSError, AttributeError):
+            prev_handler = None
+
+        phases = (
+            ("dns", self.analyze_dns),
+            ("tcp", self.analyze_tcp),
+            ("ssl", self.analyze_ssl),
+            ("http", self.analyze_http),
+            ("cdn", self.analyze_cdn),
+            ("fingerprint", self.analyze_fingerprint),
+            ("latency", self.analyze_latency),
+            ("bandwidth", self.analyze_bandwidth),
+            ("netsec", self.analyze_netsec),
+            ("protocols", self.analyze_protocols),
+            ("ipv6", self.analyze_ipv6),
+            ("routing", self.analyze_routing),
+            ("congestion", self.analyze_congestion),
+            ("pmtu", self.analyze_pmtu),
+            ("audit", self.analyze_security_audit),
+            ("encryption", self.analyze_encryption),
+            ("certchain", self.analyze_cert_chain),
+            ("protosec", self.analyze_protocol_security),
+            ("portsec", self.analyze_port_security),
+            ("reliability", self.analyze_reliability),
+            ("scalability", self.analyze_scalability),
+            ("resilience", self.analyze_resilience),
+            ("quic", self.analyze_quic),
+            ("tls13", self.analyze_tls13_optimization),
+            ("tfo", self.analyze_tcp_fast_open),
+            ("coalesce", self.analyze_connection_coalescing),
+            ("priority", self.analyze_priority_headers),
+        )
+        skipped = 0
+        stopped = False
+        try:
+            for name, fn in phases:
+                if stopped or time.time() >= deadline:
+                    skipped += 1
+                    continue
+                try:
+                    fn()
+                except _BudgetExceeded:
+                    stopped = True
+                    skipped += 1
+                    self._log(f"Time budget hit during {name}; stopping remaining phases.", "warn")
+                except Exception as exc:
+                    self._log(f"{name} failed: {exc}", "warn")
+        finally:
+            try:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                if prev_handler is not None:
+                    signal.signal(signal.SIGALRM, prev_handler)
+            except (ValueError, OSError, AttributeError, NameError):
+                pass
+
+        if skipped:
+            self._log(
+                f"Time budget ({max_seconds}s) reached; skipped {skipped} phase(s). "
+                "Summary uses completed phases only.",
+                "warn",
+            )
+
+        try:
+            self.refine_network_analysis()
+        except Exception as exc:
+            self._log(f"refine failed: {exc}", "warn")
+
+        try:
+            self.calculate_refined_scores()
+            self.build_recommendations()
+        except Exception as exc:
+            self._log(f"scoring failed: {exc}", "warn")
+
+        try:
+            self.print_summary()
+        except Exception as exc:
+            self._log(f"summary failed: {exc}", "error")
+            # Still emit a machine-readable TOTAL so scan can extract a score.
+            try:
+                total, max_total = self.calculate_total_score()
+                pct = round((total / max_total) * 100) if max_total else 0
+                grade, _ = self.get_grade(pct)
+                print(f"  TOTAL                            {total}/{max_total}  {grade}")
+            except Exception:
+                pass
+
+        try:
+            self.print_topology()
+            self.print_performance_dashboard()
+            self.print_security_report()
+            self.print_recommendations()
+        except Exception as exc:
+            self._log(f"report section failed: {exc}", "warn")
 
         return self.scores
 

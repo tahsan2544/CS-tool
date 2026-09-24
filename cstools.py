@@ -651,7 +651,7 @@ def cmd_list(args):
     return 0
 
 
-def extract_score_from_output(pattern, output):
+def extract_score_from_output(pattern, output, flags=0):
     """Return the first capture group from output, or None.
 
     Call sites pass (regex_pattern, text). ANSI color codes are stripped
@@ -662,7 +662,7 @@ def extract_score_from_output(pattern, output):
         return None
     plain = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", output)
     try:
-        match = re.search(pattern, plain, re.IGNORECASE)
+        match = re.search(pattern, plain, re.IGNORECASE | flags)
     except re.error:
         return None
     if match and match.groups():
@@ -679,21 +679,36 @@ SCORE_WEIGHTS = {
 
 
 def _run_capture(cmd, timeout=180):
-    """Run a sub-tool with a hard timeout so one hang cannot stall the scan."""
+    """Run a sub-tool with a hard timeout so one hang cannot stall the scan.
+
+    PYTHONUNBUFFERED keeps child stdout flowing into the pipe so a timeout
+    still yields usable partial output (pipe block-buffering otherwise).
+    """
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     try:
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        class _TimedOut:
-            stdout = f"[ERROR] tool timed out after {timeout}s"
-            stderr = ""
-            returncode = 124
-        return _TimedOut()
+        return subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout, env=env
+        )
+    except subprocess.TimeoutExpired as exc:
+        partial_out = exc.stdout or ""
+        if isinstance(partial_out, bytes):
+            partial_out = partial_out.decode("utf-8", "replace")
+        partial_err = exc.stderr or ""
+        if isinstance(partial_err, bytes):
+            partial_err = partial_err.decode("utf-8", "replace")
+        note = f"[ERROR] tool timed out after {timeout}s"
+        return type("_TimedOut", (), {
+            "stdout": (partial_out + ("\n" if partial_out else "") + note),
+            "stderr": partial_err,
+            "returncode": 124,
+        })()
     except OSError as exc:
-        class _Failed:
-            stdout = f"[ERROR] {exc}"
-            stderr = str(exc)
-            returncode = 1
-        return _Failed()
+        return type("_Failed", (), {
+            "stdout": f"[ERROR] {exc}",
+            "stderr": str(exc),
+            "returncode": 1,
+        })()
 
 
 def normalize_score_100(raw):
@@ -948,8 +963,15 @@ def cmd_scan(args):
         sec_args.append("--no-color")
     sec_result = _run_capture([sys.executable, SECURITY] + sec_args)
     sec_output = sec_result.stdout
-    sec_score = extract_score_from_output(r'Score:\s*(\d+)/100', sec_output)
-    sec_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', sec_output)
+    # Prefer the headline Overall Score; bare "Score:" can hit residual-risk 96 first.
+    sec_score = extract_score_from_output(r'Overall Score:\s*(\d+)/100', sec_output)
+    if not sec_score:
+        sec_score = extract_score_from_output(r'Score:\s*(\d+)/100\s+Grade', sec_output)
+    if not sec_score:
+        sec_score = extract_score_from_output(r'Score:\s*(\d+)/100', sec_output)
+    sec_grade = extract_score_from_output(r'Overall Score:\s*\d+/100\s+Grade:\s*([A-F][+-]?)', sec_output)
+    if not sec_grade:
+        sec_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', sec_output)
     results["security"] = {
         "output": sec_output,
         "returncode": sec_result.returncode,
@@ -965,9 +987,14 @@ def cmd_scan(args):
         perf_args.append("--no-color")
     perf_result = _run_capture([sys.executable, PERF] + perf_args)
     perf_output = perf_result.stdout
-    # PerfAnalyzer prints "Score: ███ 72/100" — bar chart sits between label and number.
-    perf_score = extract_score_from_output(r'Score:\s*[^\d]*(\d+)/100', perf_output)
-    perf_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', perf_output)
+    # PerfAnalyzer prints "Score: ███ 72/100" and "Score        ███ 72/100" (no colon).
+    perf_score = extract_score_from_output(r'^\s*Score:\s*[^\d]*(\d+)/100', perf_output, re.MULTILINE)
+    if not perf_score:
+        perf_score = extract_score_from_output(r'^\s*Score\s+[^\d]*(\d+)/100', perf_output, re.MULTILINE)
+    # Tool's own "Grade: B" under the main score; avoid earlier budget grades.
+    perf_grade = extract_score_from_output(r'^\s*Score:\s*[^\d]*\d+/100\s+Grade:\s*([A-F][+-]?)', perf_output, re.MULTILINE)
+    if not perf_grade:
+        perf_grade = extract_score_from_output(r'^\s*Grade:\s*([A-F][+-]?)\s*$', perf_output, re.MULTILINE)
     results["perf"] = {
         "output": perf_output,
         "returncode": perf_result.returncode,
@@ -1043,14 +1070,20 @@ def cmd_scan(args):
         network_args += ["--export", export]
     if args.no_color:
         network_args.append("--no-color")
-    network_result = _run_capture([sys.executable, NETWORK] + network_args)
+    network_result = _run_capture([sys.executable, NETWORK] + network_args, timeout=150)
     network_output = network_result.stdout
     network_score = extract_score_from_output(r'Network Score:\s*(\d+)/100', network_output)
     if not network_score:
         network_score = extract_score_from_output(r'Composite Score:\s*([\d.]+)/100', network_output)
     if not network_score:
+        # print_summary TOTAL line: "TOTAL ... 45/95    D" — capture full ratio for normalize
+        network_score = extract_score_from_output(r'^\s*TOTAL\s+.*?(\d+(?:\.\d+)?/\d+)', network_output, re.MULTILINE)
+    if not network_score:
         network_score = extract_score_from_output(r'Score:\s*([\d.]+)/100', network_output)
     network_grade = extract_score_from_output(r'Grade:\s*([A-F][+-]?)', network_output)
+    if not network_grade:
+        # TOTAL line often ends with bare letter grade
+        network_grade = extract_score_from_output(r'^\s*TOTAL\s+.*?\d+/\d+\s+([A-F][+-]?)\s*$', network_output, re.MULTILINE)
     results["network"] = {
         "output": network_output,
         "returncode": network_result.returncode,
@@ -1264,9 +1297,15 @@ def cmd_scan(args):
     print(f"  {C['desc']}Time:{C['reset']}     {_dim(datetime.now().strftime('%Y-%m-%d %H:%M:%S'))}")
     print(f"{C['rule']}{Style.DIM}{'─' * 70}{C['reset']}\n")
 
+    def _fmt_score(raw):
+        n = normalize_score_100(raw)
+        if n is None:
+            return str(raw) if raw else "?"
+        return f"{n:g}"
+
     print(f"  {Fore.GREEN}{Style.BRIGHT}SEO Analysis{Style.RESET_ALL}")
     if seo_score:
-        print(f"    Score: {Fore.YELLOW}{seo_score}{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(seo_score)}/100{Style.RESET_ALL}")
     if results["seo"].get("grade"):
         print(f"    Grade: {Fore.YELLOW}{results['seo']['grade']}{Style.RESET_ALL}")
     if results["seo"]["returncode"] == 0:
@@ -1280,7 +1319,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Security Analysis{Style.RESET_ALL}")
     if sec_score:
-        print(f"    Score: {Fore.YELLOW}{sec_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(sec_score)}/100{Style.RESET_ALL}")
     if sec_grade:
         print(f"    Grade: {Fore.YELLOW}{sec_grade}{Style.RESET_ALL}")
     if results["security"]["returncode"] == 0:
@@ -1296,7 +1335,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Performance Analysis{Style.RESET_ALL}")
     if perf_score:
-        print(f"    Score: {Fore.YELLOW}{perf_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(perf_score)}/100{Style.RESET_ALL}")
     if perf_grade:
         print(f"    Grade: {Fore.YELLOW}{perf_grade}{Style.RESET_ALL}")
     if results["perf"]["returncode"] == 0:
@@ -1306,7 +1345,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Uptime Check{Style.RESET_ALL}")
     if uptime_score:
-        print(f"    Score: {Fore.YELLOW}{uptime_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(uptime_score)}/100{Style.RESET_ALL}")
     if uptime_verdict:
         v_color = Fore.GREEN if uptime_verdict == "UP" else (Fore.YELLOW if uptime_verdict == "DEGRADED" else Fore.RED)
         print(f"    Status: {v_color}{uptime_verdict}{Style.RESET_ALL}")
@@ -1317,7 +1356,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Mobile Analysis{Style.RESET_ALL}")
     if mobile_score:
-        print(f"    Score: {Fore.YELLOW}{mobile_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(mobile_score)}/100{Style.RESET_ALL}")
     if mobile_grade:
         print(f"    Grade: {Fore.YELLOW}{mobile_grade}{Style.RESET_ALL}")
     if mobile_verdict:
@@ -1330,7 +1369,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Content Analysis{Style.RESET_ALL}")
     if content_score:
-        print(f"    Score: {Fore.YELLOW}{content_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(content_score)}/100{Style.RESET_ALL}")
     if content_grade:
         print(f"    Grade: {Fore.YELLOW}{content_grade}{Style.RESET_ALL}")
     if results["content"]["returncode"] == 0:
@@ -1340,7 +1379,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Network Diagnostics{Style.RESET_ALL}")
     if network_score:
-        print(f"    Score: {Fore.YELLOW}{network_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(network_score)}/100{Style.RESET_ALL}")
     if network_grade:
         print(f"    Grade: {Fore.YELLOW}{network_grade}{Style.RESET_ALL}")
     if results["network"]["returncode"] == 0:
@@ -1350,7 +1389,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Accessibility Analysis{Style.RESET_ALL}")
     if access_score:
-        print(f"    Score: {Fore.YELLOW}{access_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(access_score)}/100{Style.RESET_ALL}")
     if access_grade:
         print(f"    Grade: {Fore.YELLOW}{access_grade}{Style.RESET_ALL}")
     if wcag_level:
@@ -1362,7 +1401,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Image Analysis{Style.RESET_ALL}")
     if image_score:
-        print(f"    Score: {Fore.YELLOW}{image_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(image_score)}/100{Style.RESET_ALL}")
     if image_grade:
         print(f"    Grade: {Fore.YELLOW}{image_grade}{Style.RESET_ALL}")
     if results["image"]["returncode"] == 0:
@@ -1372,7 +1411,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}API Analysis{Style.RESET_ALL}")
     if api_score:
-        print(f"    Score: {Fore.YELLOW}{api_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(api_score)}/100{Style.RESET_ALL}")
     if api_grade:
         print(f"    Grade: {Fore.YELLOW}{api_grade}{Style.RESET_ALL}")
     if results["api"]["returncode"] == 0:
@@ -1382,7 +1421,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Video Analysis{Style.RESET_ALL}")
     if video_score:
-        print(f"    Score: {Fore.YELLOW}{video_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(video_score)}/100{Style.RESET_ALL}")
     if video_grade:
         print(f"    Grade: {Fore.YELLOW}{video_grade}{Style.RESET_ALL}")
     if results["video"]["returncode"] == 0:
@@ -1392,7 +1431,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Schema Analysis{Style.RESET_ALL}")
     if schema_score:
-        print(f"    Score: {Fore.YELLOW}{schema_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(schema_score)}/100{Style.RESET_ALL}")
     if schema_grade:
         print(f"    Grade: {Fore.YELLOW}{schema_grade}{Style.RESET_ALL}")
     if results["schema"]["returncode"] == 0:
@@ -1401,8 +1440,8 @@ def cmd_scan(args):
         print(f"    Status: {Fore.RED}Failed{Style.RESET_ALL}")
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Email Deliverability{Style.RESET_ALL}")
-    if email_score:
-        print(f"    Score: {Fore.YELLOW}{email_score}/100{Style.RESET_ALL}")
+    if email_score is not None:
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(email_score)}/100{Style.RESET_ALL}")
     if email_grade:
         print(f"    Grade: {Fore.YELLOW}{email_grade}{Style.RESET_ALL}")
     if results["email"]["returncode"] == 0:
@@ -1412,7 +1451,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Sitemap & Crawlability{Style.RESET_ALL}")
     if sitemap_score:
-        print(f"    Score: {Fore.YELLOW}{sitemap_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(sitemap_score)}/100{Style.RESET_ALL}")
     if sitemap_grade:
         print(f"    Grade: {Fore.YELLOW}{sitemap_grade}{Style.RESET_ALL}")
     if results["sitemap"]["returncode"] == 0:
@@ -1422,7 +1461,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}HTML Validation{Style.RESET_ALL}")
     if html_score:
-        print(f"    Score: {Fore.YELLOW}{html_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(html_score)}/100{Style.RESET_ALL}")
     if html_grade:
         print(f"    Grade: {Fore.YELLOW}{html_grade}{Style.RESET_ALL}")
     if results["html"]["returncode"] == 0:
@@ -1432,7 +1471,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}CDN Analysis{Style.RESET_ALL}")
     if cdn_score:
-        print(f"    Score: {Fore.YELLOW}{cdn_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(cdn_score)}/100{Style.RESET_ALL}")
     if cdn_grade:
         print(f"    Grade: {Fore.YELLOW}{cdn_grade}{Style.RESET_ALL}")
     if results["cdn"]["returncode"] == 0:
@@ -1442,7 +1481,7 @@ def cmd_scan(args):
 
     print(f"\n  {Fore.GREEN}{Style.BRIGHT}Cookie Privacy{Style.RESET_ALL}")
     if cookies_score:
-        print(f"    Score: {Fore.YELLOW}{cookies_score}/100{Style.RESET_ALL}")
+        print(f"    Score: {Fore.YELLOW}{_fmt_score(cookies_score)}/100{Style.RESET_ALL}")
     if cookies_grade:
         print(f"    Grade: {Fore.YELLOW}{cookies_grade}{Style.RESET_ALL}")
     if results["cookies"]["returncode"] == 0:
