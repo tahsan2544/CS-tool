@@ -855,7 +855,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 ## 👤 Author
 
-**tahsan2544**
+**TAHSAN AHMED**
 
 - GitHub: [@tahsan2544](https://github.com/tahsan2544)
 - Repository: [CS-Tool](https://github.com/tahsan2544/CS-tool)
