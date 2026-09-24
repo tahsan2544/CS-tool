@@ -7,6 +7,7 @@
 **19 specialized tools. One unified CLI. Complete website analysis.**
 
 ![Python](https://img.shields.io/badge/Python-3.7%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Version](https://img.shields.io/badge/version-1.3.0-FF6B6B?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-4C1?style=for-the-badge)
 ![Tools](https://img.shields.io/badge/Tools-19-FF6B6B?style=for-the-badge)
 ![CI](https://img.shields.io/badge/CI-GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
@@ -15,7 +16,7 @@
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/tahsan2544)
 [![Star on GitHub](https://img.shields.io/github/stars/tahsan2544/CS-tool?style=for-the-badge&logo=github)](https://github.com/tahsan2544/CS-tool)
 
-**[Quick Start](#-quick-start)** · **[All Tools](#%EF%B8%8F-available-tools-19)** · **[Upgrade Roadmap](#%EF%B8%8F-upgrade-roadmap)** · **[Full Scan](#-full-scan)** · **[Contributing](#-contributing)**
+**[Quick Start](#-quick-start)** · **[All Tools](#️-available-tools-19)** · **[Scoring](#-how-scoring-works)** · **[Full Scan](#-full-scan)** · **[Upgrade Roadmap](#️-upgrade-roadmap)** · **[Contributing](#-contributing)**
 
 </div>
 
@@ -29,8 +30,10 @@
 - [Available Tools](#-available-tools)
 - [Usage Examples](#-usage-examples)
 - [Full Scan](#-full-scan)
+- [How Scoring Works](#-how-scoring-works)
 - [Upgrade Roadmap](#️-upgrade-roadmap)
 - [Export Formats](#-export-formats)
+- [Reliability](#-reliability--timeouts)
 - [Tool Details](#-tool-details)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
@@ -42,7 +45,9 @@
 
 ## 🎯 Overview
 
-CS-Tool is a unified suite of **19 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS-Tool provides everything you need to measure, audit, and optimize any website. Every full `scan` ends with a weighted **overall site rating** and a prioritized **what-to-do** list drawn from live tool issues.
+CS-Tool is a unified suite of **19 specialized tools** for analyzing websites from every angle. Whether you're a developer, security researcher, SEO specialist, or system administrator, CS-Tool provides everything you need to measure, audit, and optimize any website.
+
+Every full `scan` ends with a weighted **overall site rating** (0–100 + letter grade) and a prioritized **what-to-do** list drawn from live tool issues — no second command required.
 
 ### What Can You Analyze?
 
@@ -88,7 +93,7 @@ python cstools.py seo -u https://example.com
 # Run a full security audit
 python cstools.py security -u https://example.com
 
-# Run all analysis tools at once
+# Run all analysis tools at once (ends with overall rating + what-to-do)
 python cstools.py scan -u https://example.com --export all
 
 # Get a prioritized upgrade roadmap (what to fix for a better rating)
@@ -188,6 +193,15 @@ cstools seo -u https://example.com
 | 17 | **CDNAnalyzer** | `cdn` | 🌐 Network | CDN detection, caching, edge performance |
 | 18 | **CookieAnalyzer** | `cookies` | 🍪 Privacy | Cookie privacy, GDPR, CCPA, consent management |
 | 19 | **UpgradeAdvisor** | `upgrade` | 🗺️ Upgrade Planning | Prioritized what-to-upgrade roadmap for better rating |
+
+CLI groups (`cstools list`):
+
+| Group | Commands |
+|-------|----------|
+| **meta** | `scan` · `upgrade` · `list` |
+| **core** | `seo` · `security` · `perf` · `uptime` · `loadstorm` |
+| **content** | `content` · `html` · `schema` · `sitemap` · `image` · `video` |
+| **platform** | `mobile` · `access` · `network` · `cdn` · `api` · `email` · `cookies` |
 
 ---
 
@@ -299,23 +313,114 @@ python cstools.py scan -u https://example.com --export all
 [16/17] Running CDN Analysis...
 [17/17] Running Cookie Privacy...
 
-==========================================
-         COMBINED SCAN RESULTS
-==========================================
+======================================================================
+  COMBINED SCAN RESULTS
+======================================================================
+  Target:   https://tahsan-portfolio.ai.studio/
+  Time:     2026-09-24 16:31:27
+──────────────────────────────────────────────────────────────────────
 
-==========================================
-       OVERALL SITE RATING
-==========================================
-  Overall:  48.3 / 100  Grade F
-  Coverage: 15/16 tools scored · weight 95/100
+  SEO Analysis
+    Score: 35.7/100
+    Grade: D
+    Status: Completed
+  ...
+
+  Network Diagnostics
+    Score: 48.5/100
+    Grade: D
+    Status: Completed
+  ...
+
+══════════════════════════════════════════════════════════════════════
+  OVERALL SITE RATING
+══════════════════════════════════════════════════════════════════════
+  Target:   https://tahsan-portfolio.ai.studio/
+  Coverage: 16/16 tools scored · weight 100/100
+
+  Overall:   48.3 / 100   Grade F
+           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%
   Distance to A (90): 41.7 points
 
   WHAT TO DO (prioritized — biggest rating gain first)
+──────────────────────────────────────────────────────────────────────
+  #   Area           Now Grade    Gain  Effort     Pri  First fix
+  ──────────────────────────────────────────────────────────────────
+  1   security     17.0     F  +  9.5  High     2.38  Missing X-Frame-Options FAIL
+  2   perf         72.0     C  +  2.3  Low      2.30  close score gap to 90
+  3   seo          35.7     F  +  7.1  High     1.77  Add an H1 tag
   ...
-  QUICK WINS / BIGGEST RATING MOVES / Projected overall if fixed
+
+    QUICK WINS (do these first)
+    + perf: 72 → +2.3 overall if brought to 90
+    + access: 74 → +1.1 overall if brought to 90
+    ...
+
+    BIGGEST RATING MOVES
+    ▸ security: +9.5 overall  (now 17, High effort)
+    ▸ seo: +7.1 overall  (now 36, High effort)
+    ...
+
+    POTENTIAL: fixing the list above ≈ +42.1 weighted points
+    Projected overall if fixed: 77.8 (C)
+    Order matters: work top-down in the table. No second command needed.
 ```
 
-> LoadStorm is intentionally excluded from `scan` (it generates traffic). Run it separately with `cstools loadstorm`. After every scan the CLI prints **OVERALL SITE RATING** + **WHAT TO DO** (prioritized fixes). Use `cstools upgrade` to re-run only the aggregation/roadmap path.
+> Sample above is a **live run** against `https://tahsan-portfolio.ai.studio/` (CS-Tool 1.3.0). Scores change with the target.
+
+Notes:
+
+- **LoadStorm is intentionally excluded** from `scan` (it generates traffic). Run it separately: `cstools loadstorm`.
+- **Email** is reported in the scorecard but is **not weighted** into the overall rating (SPF/DKIM depend on the mail host, not the site under test).
+- Every tool score is printed as **`n/100`** after normalization (raw ratios like `201/563` or `65/130` are converted).
+- SPA / client-rendered sites: tools analyze the **server HTML shell**. Empty `<div id="root">` content means SEO/content scores reflect SSR output only.
+
+---
+
+## ⚖️ How Scoring Works
+
+### Normalization
+
+Each tool emits a raw score in its own format. Before display and aggregation, `normalize_score_100` coerces it to **0–100**:
+
+| Raw form | Example | Normalized |
+|----------|---------|------------|
+| Plain number | `72` | `72` |
+| Decimal | `30.6` | `30.6` |
+| Ratio | `201/563` | `35.7` |
+| Network TOTAL | `65/130` | `50` |
+| Percent-style | `85%` | `85` |
+
+### Letter grades (overall rating)
+
+| Score | Grade |
+|------:|:-----:|
+| ≥ 95 | A+ |
+| ≥ 90 | A |
+| ≥ 80 | B |
+| ≥ 70 | C |
+| ≥ 60 | D |
+| < 60 | F |
+
+Individual tools may print their own grade letter under their score (e.g. PerfAnalyzer `Grade: B` for 72). The **overall** grade always uses the table above.
+
+### Weights (`SCORE_WEIGHTS`, sum = 100)
+
+| Area | Weight | Area | Weight |
+|------|-------:|------|-------:|
+| seo | 13 | network | 5 |
+| security | 13 | uptime | 4 |
+| perf | 13 | image | 4 |
+| mobile | 8 | api | 4 |
+| content | 8 | sitemap | 4 |
+| access | 7 | video | 3 |
+| schema | 6 | html | 3 |
+| | | cdn | 3 |
+| | | cookies | 2 |
+| | | **email** | **0** (reported, not weighted) |
+| | | **Total** | **100** |
+
+`overall = Σ (tool_score × weight) / 100` over tools that produced a score. Coverage shows **tools scored** and **weight covered** (e.g. `16/16 tools scored · weight 100/100`).
 
 ---
 
@@ -337,17 +442,17 @@ python cstools.py upgrade -u https://example.com --export all
 
 ```
   OVERALL SITE RATING
-  48.1 / 100   Grade F
-    Distance to A (90): 41.9 points
+  48.3 / 100   Grade F
+    Distance to A (90): 41.7 points
 
   WHAT TO UPGRADE (prioritized — biggest rating gain first)
   #   Upgrade area      Now   Gain Effort  Priority  Why
-  1   security         17.0 +  6.6 High        2.67  Missing X-Frame-Options
-  2   seo              34.8 +  6.6 High        1.65  Add an H1 tag
+  1   security         17.0 +  9.5 High        2.38  Missing X-Frame-Options
+  2   perf             72.0 +  2.3 Low         2.30  close score gap to 90
   ...
   QUICK WINS (low effort, do these first)
   BIGGEST RATING MOVES (plan these)
-  POTENTIAL: projected rating → 75.4 (C)
+  POTENTIAL: projected rating → 77.8 (C)
 ```
 
 ---
@@ -385,6 +490,24 @@ seo_report_20260923_143022.json
 seo_report_20260923_143022.csv
 seo_report_20260923_143022.html
 ```
+
+Full `scan` JSON also includes `overall_rating`, `overall_grade`, `scored_tools`, `scores_normalized`, and `what_to_do`.
+
+---
+
+## 🛡️ Reliability & Timeouts
+
+A hung sub-tool must not stall the whole scan. Guards in place:
+
+| Guard | Behavior |
+|-------|----------|
+| **Per-tool timeout** | Every scan runner uses `_run_capture(..., timeout=180)`. On timeout the CLI keeps **partial stdout/stderr**, appends `[ERROR] tool timed out after 180s`, and continues (exit code 124). |
+| **Unbuffered children** | Sub-processes run with `PYTHONUNBUFFERED=1` so pipe output is not block-buffered and lost on kill. |
+| **NetworkAnalyzer budget** | Internal **100s** time budget (`run(max_seconds=100)`). Remaining phases are skipped with a warning; summary still prints `TOTAL n/m` from completed phases. Scan wrapper allows **150s** for network. |
+| **Score fallbacks** | Headline patterns first (`Overall Score`, `Score: … Grade`, `TOTAL n/m`), then generic fallbacks — ANSI stripped before match. |
+| **Display normalization** | Combined results always print `n/100` (never `65/130/100` or raw `201/563`). |
+
+Typical full scan wall time on a healthy network: **~3–4 minutes** (network phase ~100s of that).
 
 ---
 
@@ -433,7 +556,7 @@ python cstools.py seo -u https://example.com --export all
 - E-E-A-T signals
 - Content quality index
 
-**Scoring:** 0-100 with A-F grades and category breakdowns
+**Scoring:** 0-100 with A-F grades and category breakdowns (raw final score may print as `201/563` → normalized to `35.7/100` in `scan`)
 
 ---
 
@@ -457,7 +580,8 @@ python cstools.py security -u https://example.com
 - API security testing
 - Container/cloud detection
 
-**Output:** CVSS-like scoring, risk heat map, remediation roadmap
+**Output:** CVSS-like scoring, risk heat map, remediation roadmap  
+**Scan extraction:** prefers the headline `Overall Score: n/100` (not residual-risk subscores)
 
 ---
 
@@ -479,7 +603,8 @@ python cstools.py perf -u https://example.com -v
 - PageSpeed Insights approximation
 - Performance budget compliance
 
-**Output:** ASCII waterfall, optimization priority matrix, budget dashboard
+**Output:** ASCII waterfall, optimization priority matrix, budget dashboard  
+**Scan extraction:** matches `Score: ███ 72/100` (bar meters and no-colon variants)
 
 ---
 
@@ -549,7 +674,8 @@ python cstools.py network -u https://example.com
 - Port scanning (24 ports)
 - Protocol support (WebSocket, FTP, SMTP, SSH)
 
-**Output:** Network topology, security assessment, optimization recommendations
+**Output:** Network topology, security assessment, optimization recommendations  
+**Time budget:** finishes within **100s** even if later phases are skipped; summary always includes `TOTAL n/m`
 
 ---
 
@@ -570,7 +696,8 @@ python cstools.py email -u example.com
 - MTA-STS support
 - BIMI (Brand Indicators)
 
-**Output:** Email deliverability score, configuration recommendations
+**Output:** Email deliverability score, configuration recommendations  
+**Note:** shown in the scan scorecard but **not weighted** into the overall site rating
 
 ---
 
@@ -672,9 +799,16 @@ pip install --upgrade certifi
 
 **Timeout Errors**
 ```bash
-# Increase timeout
+# Increase timeout for a single tool
 python cstools.py seo -u https://example.com -t 60
 ```
+
+**Scan says a tool timed out (`rc 124` / `[ERROR] tool timed out`)**
+- The CLI kept partial output and continued; check that tool's section for a partial score or `?`.
+- NetworkAnalyzer always finishes within its 100s budget and prints `TOTAL` even if phases were skipped.
+
+**Overall rating lower than expected on a React/Vue SPA**
+- `scan` analyzes the **server-rendered HTML**. Client-only content is invisible to SEO/content tools until you enable SSR/prerender or point the tools at a prerendered URL.
 
 ### Getting Help
 
@@ -698,8 +832,9 @@ Quick version:
 1. Fork and create a feature branch (`git checkout -b feat/my-tool`)
 2. Match existing tool layout (`YourTool/yourtool.py` + `setup.py` + `requirements.txt`)
 3. Wire it into `cstools.py` (path, TOOLS, `cmd_*`, subparser, banner)
-4. `python -m py_compile` your files and smoke-test `--help`
-5. Open a PR using the template
+4. If the tool feeds `scan`, add a score pattern + `SCORE_WEIGHTS` entry (keep sum = 100) and a `normalize_score_100`-compatible final score line
+5. `python -m py_compile` your files and smoke-test `--help` / `list`
+6. Open a PR using the template
 
 **Please read [SECURITY.md](SECURITY.md) before reporting vulnerabilities in this codebase.**
 
